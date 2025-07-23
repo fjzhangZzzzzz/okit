@@ -4,30 +4,29 @@ okit CLI main entry module
 Responsible for initializing the CLI application and registering commands.
 """
 
+import logging
 import click
-import sys
-from pathlib import Path
-from rich.console import Console
 
-from ..utils.version import get_version
-
-console = Console()
+from okit.utils.version import get_version
+from okit.utils.log import logger
+from okit.cli.autoreg import register_all_tools
+from okit.cli.completion import completion
 
 @click.group()
 @click.version_option(version=get_version(), prog_name="okit")
+@click.option('--log-level', default='INFO', show_default=True,
+    type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
+    help='Set the logging level. Use DEBUG for troubleshooting.')
 @click.pass_context
-def main(ctx: click.Context) -> None:
-    """okit - Python tool management platform"""
-    # Ensure context object exists
-    if ctx.obj is None:
-        ctx.obj = {}
+def main(ctx: click.Context, log_level: str, verbose: bool) -> None:
+    """okit - Tool scripts manager"""
+    logger.setLevel(getattr(logging, log_level.upper()))
+    ctx.ensure_object(dict)
+    ctx.obj['log_level'] = log_level
 
-    try:
-        print("Hello from okit!")
+main.add_command(completion)
 
-    except Exception as e:
-        console.print(f"[red]Failed to initialize okit: {e}[/red]")
-        sys.exit(1)
+register_all_tools()
 
 if __name__ == "__main__":
     main()
