@@ -98,3 +98,18 @@ def some_func():
     console.print("[green]同步成功[/green]")
     console.print("[bold red]严重错误[/bold red]")
 ```
+
+### 自动化发布流程
+
+推荐的分支与发布流程如下：
+
+1. **开发分支**：从 main 分支拉出开发分支（如 v1.1.0-dev），在该分支上进行开发和测试。
+2. **测试发布**：在开发分支上，手动触发 workflow，每次会自动生成 `分支-日期-序号` 格式的英文版本号（如 v1.1.0-dev-20250710-1），写入 `src/okit/__init__.py`，并发布到 TestPyPI。此过程不会 commit 版本号变更。
+3. **功能测试**：通过 pip 指定 testpypi 索引安装测试包，进行功能验证。
+4. **正式发布**：测试通过后，将开发分支合并回 main 分支，并在 main 分支最新 commit 上打正式 tag（如 v1.1.0）。workflow 会自动检查并同步 `src/okit/__init__.py` 版本号为 tag，若不一致则自动 commit 并 push，然后发布到 PyPI。
+5. **注意事项**：
+   - 发布内容为 tag 或触发分支指向的 commit 代码。
+   - 测试 tag（包含 dev/alpha/beta/rc）或开发分支发布会自动发布到 TestPyPI，正式 tag 自动发布到 PyPI。
+   - 请始终在 main 分支最新 commit 上打正式 tag，确保发布内容为最新。
+
+**自动化发布无需手动操作，只需管理好分支与 tag，GitHub Actions 会自动完成发布。**
