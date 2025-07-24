@@ -40,11 +40,11 @@ cd okit
 
 # 修改代码
 
-# 构建 okit
+# 本地构建 okit
 uv build .
 
-# 安装 okit
-uv tool install -e .
+# 本地安装 okit
+uv tool install -e . --reinstall
 
 # 发布到 TestPyPI
 uv publish --index testpypi --token YOUR_TEST_TOKEN
@@ -53,10 +53,10 @@ uv publish --index testpypi --token YOUR_TEST_TOKEN
 uv publish --token YOUR_PYPI_TOKEN
 
 # 从 TestPyPI 安装（需指定索引）
-uv pip install -i https://test.pypi.org/simple/ okit
+uv tool install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple okit==1.0.1b6
 
 # 从正式 PyPI 安装
-uv pip install okit
+uv tool install okit
 ```
 
 ### 架构设计
@@ -66,9 +66,8 @@ uv pip install okit
 okit/
   ├── cli/           # 命令行入口
   ├── utils/         # 通用工具函数
-  ├── data/          # 数据处理相关工具
+  ├── fs/            # 文件系统相关工具
   ├── net/           # 网络相关工具
-  ├── image/         # 图像处理相关工具
   └── __init__.py
 ```
 
@@ -99,17 +98,37 @@ def some_func():
     console.print("[bold red]严重错误[/bold red]")
 ```
 
+### 版本号规约
+
+#### 版本号核心
+采用语义化版本，符合 PEP 440，遵循格式 `[主版本号]!.[次版本号].[修订号][扩展标识符]`
+- 主版本号（Major）：重大变更（如 API 不兼容更新），递增时重置次版本和修订号。
+- 次版本号（Minor）：向后兼容的功能性更新，递增时重置修订号。
+- 修订号（Micro）：向后兼容的 Bug 修复或小改动。
+
+#### 扩展标识符（可选）
+- 开发版，格式示例 `1.0.0.dev1`
+- Alpha 预发布，格式示例 `1.0.0a1`，内部测试
+- Beta 预发布，格式示例 `1.0.0b2`，公开测试
+- RC 预发布，格式示例 `1.0.0rc3`，候选发布
+- 正式版，格式示例 `1.0.0`，正式发布，稳定可用
+- 后发布版，格式示例 `1.0.0.post1`，修正补丁
+
 ### 自动化发布流程
 
 推荐的分支与发布流程如下：
 
 1. **开发分支**：从 main 分支拉出开发分支（如 v1.1.0-dev），在该分支上进行开发和测试。
-2. **测试发布**：在开发分支上，手动触发 workflow，每次会自动生成 `分支-日期-序号` 格式的英文版本号（如 v1.1.0-dev-20250710-1），写入 `src/okit/__init__.py`，并发布到 TestPyPI。此过程不会 commit 版本号变更。
-3. **功能测试**：通过 pip 指定 testpypi 索引安装测试包，进行功能验证。
-4. **正式发布**：测试通过后，将开发分支合并回 main 分支，并在 main 分支最新 commit 上打正式 tag（如 v1.1.0）。workflow 会自动检查并同步 `src/okit/__init__.py` 版本号为 tag，若不一致则自动 commit 并 push，然后发布到 PyPI。
-5. **注意事项**：
+2. **测试发布**：在开发分支上，手动触发 workflow，每次会自动生成开发版本号（如 v1.1.0-devN，N 为 github workflow 构建号），写入 `src/okit/__init__.py`，并发布到 TestPyPI。此过程不会 commit 版本号变更。
+3. **预发布分支（可选）**，开发验证通过后可基于开发分支拉出预发布分支（如 v1.1.0-alpha），具体需要几轮预发布视功能复杂度和测试周期决定，该阶段的发布与测试发布一致，自动生成的版本号对应关系为：
+   1. Alpha 预发布分支名 `v1.1.0-alpha`，对应预发布版本号 `v1.1.0aN`
+   2. Beta 预发布分支名 `v1.1.0-beta`，对应预发布版本号 `v1.1.0bN`
+4. **功能测试**：通过 pip 指定 testpypi 索引安装测试包，进行功能验证。
+5. **正式发布**：测试通过后，将开发分支合并回 main 分支，并在 main 分支最新 commit 上打正式 tag（如 v1.1.0）。workflow 会自动检查并同步 `src/okit/__init__.py` 版本号为 tag，若不一致则自动 commit 并 push，然后发布到 PyPI。
+6. **注意事项**：
    - 发布内容为 tag 或触发分支指向的 commit 代码。
-   - 测试 tag（包含 dev/alpha/beta/rc）或开发分支发布会自动发布到 TestPyPI，正式 tag 自动发布到 PyPI。
+   - 开发分支发布会自动发布到 TestPyPI，正式 tag 自动发布到 PyPI。
    - 请始终在 main 分支最新 commit 上打正式 tag，确保发布内容为最新。
+   - 不允许在 main 分支上手动触发 workflow，即使这样操作也会使 workflow 失败。
 
 **自动化发布无需手动操作，只需管理好分支与 tag，GitHub Actions 会自动完成发布。**
