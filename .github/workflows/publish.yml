@@ -90,7 +90,7 @@ jobs:
             git config user.email github-actions@github.com
             git add src/okit/__init__.py
             git commit -m "chore: sync version to $TAG_NAME [auto-commit]"
-            git push
+            git push origin HEAD:main
           else
             echo "__version__ matches tag, no update needed"
           fi
