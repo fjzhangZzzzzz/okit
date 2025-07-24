@@ -40,11 +40,11 @@ cd okit
 
 # 修改代码
 
-# 构建 okit
+# 本地构建 okit
 uv build .
 
-# 安装 okit
-uv tool install -e .
+# 本地安装 okit
+uv tool install -e . --reinstall
 
 # 发布到 TestPyPI
 uv publish --index testpypi --token YOUR_TEST_TOKEN
@@ -53,10 +53,10 @@ uv publish --index testpypi --token YOUR_TEST_TOKEN
 uv publish --token YOUR_PYPI_TOKEN
 
 # 从 TestPyPI 安装（需指定索引）
-uv pip install -i https://test.pypi.org/simple/ okit
+uv tool install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple okit==1.0.1b6
 
 # 从正式 PyPI 安装
-uv pip install okit
+uv tool install okit
 ```
 
 ### 架构设计
@@ -66,9 +66,8 @@ uv pip install okit
 okit/
   ├── cli/           # 命令行入口
   ├── utils/         # 通用工具函数
-  ├── data/          # 数据处理相关工具
+  ├── fs/            # 文件系统相关工具
   ├── net/           # 网络相关工具
-  ├── image/         # 图像处理相关工具
   └── __init__.py
 ```
 
