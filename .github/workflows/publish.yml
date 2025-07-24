@@ -46,24 +46,28 @@ jobs:
             echo "is_dev=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate dev version (dev branch manual trigger)
+      - name: Generate version (dev/pre-release branch manual trigger)
         if: steps.vars.outputs.is_dev == 'true'
         run: |
           BRANCH_NAME="${GITHUB_REF##*/}"
-          DATE=$(date +%Y%m%d)
-          if [ -f .dev_version_count ]; then
-            LAST_DATE=$(cut -d'-' -f1 .dev_version_count)
-            LAST_COUNT=$(cut -d'-' -f2 .dev_version_count)
-            if [ "$LAST_DATE" = "$DATE" ]; then
-              COUNT=$((LAST_COUNT+1))
-            else
-              COUNT=1
-            fi
+          COUNT=${GITHUB_RUN_NUMBER}
+          # 解析分支名，生成 PEP 440 版本号
+          if [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-dev$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="$BASE_VER.dev$COUNT"
+          elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-alpha$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="$BASE_VERa$COUNT"
+          elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="$BASE_VERb$COUNT"
+          elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="$BASE_VERrc$COUNT"
           else
-            COUNT=1
+            echo "Invalid branch name: $BRANCH_NAME"
+            exit 1
           fi
-          echo "$DATE-$COUNT" > .dev_version_count
-          VERSION="${BRANCH_NAME}-${DATE}-${COUNT}"
           echo "dev_version=$VERSION" >> $GITHUB_ENV
           echo "Set version: $VERSION"
           sed -i "s/^__version__ = .*/__version__ = \"$VERSION\"/" src/okit/__init__.py
