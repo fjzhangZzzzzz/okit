@@ -56,20 +56,20 @@ jobs:
           # 解析分支名，生成 PEP 440 版本号
           if [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-dev$ ]]; then
             BASE_VER="${BASH_REMATCH[1]}"
-            VERSION="$BASE_VER.dev$COUNT"
-            echo "Matched dev branch, BASE_VER=$BASE_VER, VERSION=$VERSION"
+            VERSION="${BASE_VER}.dev$COUNT"
+            echo "Matched dev branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
           elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-alpha$ ]]; then
             BASE_VER="${BASH_REMATCH[1]}"
-            VERSION="$BASE_VERa$COUNT"
-            echo "Matched alpha branch, BASE_VER=$BASE_VER, VERSION=$VERSION"
+            VERSION="${BASE_VER}a$COUNT"
+            echo "Matched alpha branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
           elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta$ ]]; then
             BASE_VER="${BASH_REMATCH[1]}"
-            VERSION="$BASE_VERb$COUNT"
-            echo "Matched beta branch, BASE_VER=$BASE_VER, VERSION=$VERSION"
+            VERSION="${BASE_VER}b$COUNT"
+            echo "Matched beta branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
           elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc$ ]]; then
             BASE_VER="${BASH_REMATCH[1]}"
-            VERSION="$BASE_VERrc$COUNT"
-            echo "Matched rc branch, BASE_VER=$BASE_VER, VERSION=$VERSION"
+            VERSION="${BASE_VER}rc$COUNT"
+            echo "Matched rc branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
           else
             echo "Invalid branch name: $BRANCH_NAME"
             exit 1
