@@ -148,7 +148,7 @@ class PEParser:
 @click.argument('files', nargs=-1, type=click.Path(exists=True, path_type=Path))
 @click.option('--format', '-f', type=click.Choice(['table', 'json', 'csv']), 
               default='table', help='Output format')
-def cli(files: Tuple[Path, ...], format: str, verbose: bool):
+def cli(files: Tuple[Path, ...], format: str):
     """
     Parse PE file (EXE/DLL) header and section information.
     """

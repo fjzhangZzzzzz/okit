@@ -23,6 +23,16 @@ jobs:
       - name: Install uv
         run: pip install uv
 
+      - name: Check branch for manual trigger
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          BRANCH_NAME="${GITHUB_REF##*/}"
+          if [ "$BRANCH_NAME" = "main" ]; then
+            echo "Error: Manual trigger is not allowed on main branch"
+            exit 1
+          fi
+          echo "Manual trigger allowed on branch: $BRANCH_NAME"
+
       - name: Get branch/tag info
         id: vars
         run: |
@@ -36,24 +46,34 @@ jobs:
             echo "is_dev=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate dev version (dev branch manual trigger)
+      - name: Generate version (dev/pre-release branch manual trigger)
         if: steps.vars.outputs.is_dev == 'true'
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
         run: |
-          BRANCH_NAME="${GITHUB_REF##*/}"
-          DATE=$(date +%Y%m%d)
-          if [ -f .dev_version_count ]; then
-            LAST_DATE=$(cut -d'-' -f1 .dev_version_count)
-            LAST_COUNT=$(cut -d'-' -f2 .dev_version_count)
-            if [ "$LAST_DATE" = "$DATE" ]; then
-              COUNT=$((LAST_COUNT+1))
-            else
-              COUNT=1
-            fi
+          echo "Current branch: $BRANCH_NAME"
+          COUNT=${GITHUB_RUN_NUMBER}
+          # 解析分支名，生成 PEP 440 版本号
+          if [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-dev$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="${BASE_VER}.dev$COUNT"
+            echo "Matched dev branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
+          elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-alpha$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="${BASE_VER}a$COUNT"
+            echo "Matched alpha branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
+          elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="${BASE_VER}b$COUNT"
+            echo "Matched beta branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
+          elif [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc$ ]]; then
+            BASE_VER="${BASH_REMATCH[1]}"
+            VERSION="${BASE_VER}rc$COUNT"
+            echo "Matched rc branch, BASE_VER=${BASE_VER}, VERSION=$VERSION"
           else
-            COUNT=1
+            echo "Invalid branch name: $BRANCH_NAME"
+            exit 1
           fi
-          echo "$DATE-$COUNT" > .dev_version_count
-          VERSION="${BRANCH_NAME}-${DATE}-${COUNT}"
           echo "dev_version=$VERSION" >> $GITHUB_ENV
           echo "Set version: $VERSION"
           sed -i "s/^__version__ = .*/__version__ = \"$VERSION\"/" src/okit/__init__.py
@@ -74,6 +94,9 @@ jobs:
           else
             echo "__version__ matches tag, no update needed"
           fi
+
+      - name: Build package
+        run: uv build .
 
       - name: Publish to PyPI/TestPyPI
         env:
