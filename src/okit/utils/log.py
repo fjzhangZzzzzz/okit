@@ -17,8 +17,8 @@ class CommandNameFilter(logging.Filter):
 def get_logger(name="okit"):
     logger = logging.getLogger(name)
     if not logger.hasHandlers():
-        handler = RichHandler(console=console, show_time=True, show_level=True, show_path=False)
-        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(command)s - %(message)s")
+        handler = RichHandler(console=console, show_time=True, omit_repeated_times=False, log_time_format="[%y/%m/%d %H:%M:%S]", show_level=True, show_path=False)
+        formatter = logging.Formatter("%(command)s - %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
     logger.setLevel(logging.INFO)  # 默认等级，可由主入口动态调整
