@@ -109,7 +109,8 @@ def some_func():
 4. **正式发布**：测试通过后，将开发分支合并回 main 分支，并在 main 分支最新 commit 上打正式 tag（如 v1.1.0）。workflow 会自动检查并同步 `src/okit/__init__.py` 版本号为 tag，若不一致则自动 commit 并 push，然后发布到 PyPI。
 5. **注意事项**：
    - 发布内容为 tag 或触发分支指向的 commit 代码。
-   - 测试 tag（包含 dev/alpha/beta/rc）或开发分支发布会自动发布到 TestPyPI，正式 tag 自动发布到 PyPI。
+   - 开发分支发布会自动发布到 TestPyPI，正式 tag 自动发布到 PyPI。
    - 请始终在 main 分支最新 commit 上打正式 tag，确保发布内容为最新。
+   - 不允许在 main 分支上手动触发 workflow，即使这样操作也会使 workflow 失败。
 
 **自动化发布无需手动操作，只需管理好分支与 tag，GitHub Actions 会自动完成发布。**

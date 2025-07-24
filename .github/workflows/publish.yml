@@ -23,6 +23,16 @@ jobs:
       - name: Install uv
         run: pip install uv
 
+      - name: Check branch for manual trigger
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          BRANCH_NAME="${GITHUB_REF##*/}"
+          if [ "$BRANCH_NAME" = "main" ]; then
+            echo "Error: Manual trigger is not allowed on main branch"
+            exit 1
+          fi
+          echo "Manual trigger allowed on branch: $BRANCH_NAME"
+
       - name: Get branch/tag info
         id: vars
         run: |
@@ -74,6 +84,9 @@ jobs:
           else
             echo "__version__ matches tag, no update needed"
           fi
+
+      - name: Build package
+        run: uv build .
 
       - name: Publish to PyPI/TestPyPI
         env:
