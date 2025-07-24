@@ -18,7 +18,7 @@ from okit.cli.completion import completion
     type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
     help='Set the logging level. Use DEBUG for troubleshooting.')
 @click.pass_context
-def main(ctx: click.Context, log_level: str, verbose: bool) -> None:
+def main(ctx: click.Context, log_level: str) -> None:
     """okit - Tool scripts manager"""
     logger.setLevel(getattr(logging, log_level.upper()))
     ctx.ensure_object(dict)
