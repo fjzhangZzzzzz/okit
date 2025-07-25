@@ -14,7 +14,7 @@ from okit.cli.autoreg import register_all_tools
 from okit.cli.completion import completion
 
 @click.group()
-@click.version_option(version=get_version(), prog_name="okit")
+@click.version_option(version=get_version(), prog_name="okit", message="%(version)s")
 @click.option('--log-level', default='INFO', show_default=True,
     type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
     help='Set the logging level. Use DEBUG for troubleshooting.')
