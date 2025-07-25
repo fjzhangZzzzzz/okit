@@ -11,15 +11,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Any
 import re
-
-import paramiko
 import click
 import socket
-
 from okit.utils.log import logger
-from paramiko.ssh_exception import AuthenticationException, SSHException
+
+# paramiko 相关 import 延迟到 cli 和相关函数内部
 
 
 class SyncError(Exception):
@@ -29,6 +27,9 @@ class SyncError(Exception):
 
 def check_git_repo(directory: str) -> bool:
     """Check if directory is a Git repository."""
+    if not os.path.isdir(directory):
+        logger.error(f"Directory does not exist: {directory}")
+        sys.exit(1)
     logger.info(f"Checking if {directory} is a Git repository...")
     try:
         result = subprocess.run(
@@ -92,7 +93,7 @@ def check_rsync_available() -> bool:
 def verify_directory_structure(
     source_dirs: List[str],
     remote_root: str,
-    ssh_client: paramiko.SSHClient
+    ssh_client: Any
 ) -> bool:
     """Verify if target directories exist on remote server."""
     logger.info(f"Verifying target {remote_root} directories exist...")
@@ -112,7 +113,7 @@ def verify_directory_structure(
     return True
 
 
-def ensure_remote_dir(sftp, remote_directory):
+def ensure_remote_dir(sftp: Any, remote_directory):
     """递归创建远程目录（如不存在），并检查创建结果。"""
     dirs = []
     while remote_directory not in ('/', ''):
@@ -131,16 +132,16 @@ def ensure_remote_dir(sftp, remote_directory):
                     sftp.stat(d)
                 except Exception as stat_e:
                     logger.error(f"Directory {d} creation failed to verify: {stat_e}")
-                    raise SyncError(f"Remote directory {d} creation failed to verify: {stat_e}")
+                    raise Exception(f"Remote directory {d} creation failed to verify: {stat_e}")
             except PermissionError as e:
                 logger.error(f"Permission denied creating remote directory {d}: {str(e)}")
-                raise SyncError(f"Permission denied creating remote directory {d}: {str(e)}")
+                raise Exception(f"Permission denied creating remote directory {d}: {str(e)}")
             except OSError as e:
                 logger.error(f"OS error creating remote directory {d}: {str(e)}")
-                raise SyncError(f"OS error creating remote directory {d}: {str(e)}")
+                raise Exception(f"OS error creating remote directory {d}: {str(e)}")
             except Exception as e:
                 logger.error(f"Failed to create remote directory {d}: {str(e)}")
-                raise SyncError(f"Failed to create remote directory {d}: {str(e)}")
+                raise Exception(f"Failed to create remote directory {d}: {str(e)}")
 
 
 def sync_via_rsync(
@@ -175,7 +176,7 @@ def sync_via_rsync(
 def sync_via_sftp(
     source_dir: str,
     files: List[str],
-    sftp: paramiko.SFTPClient,
+    sftp: Any,
     target_root: str,
     dry_run: bool,
     max_depth: int = 5,
@@ -247,6 +248,8 @@ def fix_target_root_path(target_root: str) -> str:
 @click.option('--max-depth', type=int, default=5, show_default=True, help='Maximum recursion depth for directory sync')
 @click.option('--recursive/--no-recursive', default=True, show_default=True, help='Enable or disable recursive directory sync')
 def cli(source_dirs, host, port, user, target_root, dry_run, max_depth, recursive):
+    import paramiko
+    from paramiko.ssh_exception import AuthenticationException, SSHException
     """Synchronize Git project folders to remote Linux server."""
     target_root = fix_target_root_path(target_root)
 
