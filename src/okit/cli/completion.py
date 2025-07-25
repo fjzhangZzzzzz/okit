@@ -5,17 +5,6 @@ import subprocess
 from pathlib import Path
 import click
 
-SUPPORTED_SHELLS = ["bash", "zsh", "fish"]
-SHELL_RC_FILES = {
-    "bash": [".bashrc", ".bash_profile"],
-    "zsh": [".zshrc"],
-    "fish": [os.path.join(".config", "fish", "config.fish")],
-}
-
-PROGRAM_NAME = "okit"
-COMPLETION_FILE_TEMPLATE = ".okit-complete.{shell}"
-
-
 def detect_shell():
     """
     Detect the current shell type. Return one of SUPPORTED_SHELLS or None.
@@ -40,7 +29,7 @@ def detect_shell():
                 return "fish"
         except Exception:
             pass
-    for s in SUPPORTED_SHELLS:
+    for s in get_supported_shells():
         if s in shell:
             return s
     return None
@@ -65,7 +54,7 @@ def get_completion_file(shell, for_shell_rc=False):
 
 def get_rc_files(shell):
     """Get the list of rc files for the given shell."""
-    return [get_home_dir() / rc for rc in SHELL_RC_FILES.get(shell, [])]
+    return [get_home_dir() / rc for rc in get_shell_rc_files().get(shell, [])]
 
 
 def is_source_line_present(rc_path, completion_file):
@@ -118,7 +107,7 @@ def write_completion_script(shell):
     """Generate and write the completion script for the given shell."""
     completion_file = get_completion_file(shell, for_shell_rc=False)
     try:
-        script = generate_completion_script(shell, PROGRAM_NAME)
+        script = generate_completion_script(shell, get_program_name())
         # 强制使用 LF 换行
         with open(completion_file, "w", encoding="utf-8", newline="\n") as f:
             f.write(script)
@@ -146,7 +135,7 @@ def auto_enable_completion_if_possible():
     This should be called at CLI startup.
     """
     shell = detect_shell()
-    if shell not in SUPPORTED_SHELLS:
+    if shell not in get_supported_shells():
         return
     completion_file_abs = get_completion_file(shell, for_shell_rc=False)
     completion_file_tilde = get_completion_file(shell, for_shell_rc=True)
@@ -161,7 +150,7 @@ def auto_enable_completion_if_possible():
 def enable_completion():
     """Manually enable shell completion for the current shell."""
     shell = detect_shell()
-    if shell not in SUPPORTED_SHELLS:
+    if shell not in get_supported_shells():
         click.echo("Shell completion is only supported for bash, zsh, fish.")
         return
     completion_file_abs = get_completion_file(shell, for_shell_rc=False)
@@ -190,7 +179,7 @@ def enable_completion():
 def disable_completion():
     """Manually disable shell completion for the current shell."""
     shell = detect_shell()
-    if shell not in SUPPORTED_SHELLS:
+    if shell not in get_supported_shells():
         click.echo("Shell completion is only supported for bash, zsh, fish.")
         return
     completion_file_tilde = get_completion_file(shell, for_shell_rc=True)
@@ -248,3 +237,20 @@ def enable():
 def disable():
     """Disable shell completion for okit CLI."""
     disable_completion() 
+
+
+def get_supported_shells():
+    return ["bash", "zsh", "fish"]
+
+def get_shell_rc_files():
+    return {
+        "bash": [".bashrc", ".bash_profile"],
+        "zsh": [".zshrc"],
+        "fish": [os.path.join(".config", "fish", "config.fish")],
+    }
+
+def get_program_name():
+    return "okit"
+
+def get_completion_file_template():
+    return ".okit-complete.{shell}" 

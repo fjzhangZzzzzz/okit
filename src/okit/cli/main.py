@@ -7,6 +7,7 @@ Responsible for initializing the CLI application and registering commands.
 import logging
 import click
 
+
 from okit.utils.version import get_version
 from okit.utils.log import logger
 from okit.cli.autoreg import register_all_tools

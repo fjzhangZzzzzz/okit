@@ -1,7 +1,6 @@
 import os
 import sys
 import click
-from git import Repo, GitCommandError
 from okit.utils.log import logger, console
 
 
@@ -24,6 +23,7 @@ def get_repo_name(repo_url):
 
 
 def clone_repositories(repo_list, branch=None):
+    from git import Repo, GitCommandError
     success_count = 0
     fail_count = 0
     skip_count = 0
@@ -57,6 +57,7 @@ def clone_repositories(repo_list, branch=None):
 @click.argument('repo_list', type=click.Path(exists=True, dir_okay=False))
 @click.option('-b', '--branch', default=None, help='Branch name to clone (optional)')
 def cli(repo_list, branch):
+    from git import Repo, GitCommandError
     """Batch clone git repositories from a list file."""
     repo_list_data = read_repo_list(repo_list)
     if not repo_list_data:
