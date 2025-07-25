@@ -1,0 +1,31 @@
+name: Cleanup old dev Docker images
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # 每周日凌晨3点
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete old dev images, keep latest 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO=${{ github.repository }}
+          OWNER=${REPO%%/*}
+          IMAGE=${REPO#*/}
+          # 获取所有 dev 镜像 tag（假设 dev tag 含 .dev）
+          versions=$(gh api -H "Accept: application/vnd.github+json" \
+            /orgs/$OWNER/packages/container/$IMAGE/versions?per_page=100 | jq -c '.[]')
+          dev_versions=$(echo "$versions" | jq -r 'select(.metadata.container.tags[] | contains(".dev")) | [.id, (.metadata.container.tags[])] | @tsv')
+          # 按 tag 排序，保留最新 5 个
+          keep_ids=$(echo "$dev_versions" | sort -t$'\t' -k2Vr | head -n 5 | cut -f1)
+          delete_ids=$(echo "$dev_versions" | cut -f1 | grep -vxFf <(echo "$keep_ids"))
+          for id in $delete_ids; do
+            echo "Deleting dev image version id: $id"
+            gh api --method DELETE -H "Accept: application/vnd.github+json" /orgs/$OWNER/packages/container/$IMAGE/versions/$id
+          done 
