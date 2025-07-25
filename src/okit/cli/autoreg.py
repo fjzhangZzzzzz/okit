@@ -3,6 +3,7 @@ import importlib
 import os
 import sys
 import time
+from okit.utils.log import with_timing
 
 def auto_register_commands(package, package_path, parent_group):
     """
@@ -20,7 +21,10 @@ def auto_register_commands(package, package_path, parent_group):
             try:
                 module = importlib.import_module(full_modname)
                 if hasattr(module, "cli"):
-                    parent_group.add_command(getattr(module, "cli"), name=modname)
+                    cmd = getattr(module, "cli")
+                    if hasattr(cmd, "callback") and callable(cmd.callback):
+                        cmd.callback = with_timing(cmd.callback)
+                    parent_group.add_command(cmd, name=modname)
             except Exception as e:
                 print(f"Failed to import {full_modname}: {e}", file=sys.stderr)
 
