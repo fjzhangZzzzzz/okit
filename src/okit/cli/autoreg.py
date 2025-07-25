@@ -2,7 +2,6 @@ import pkgutil
 import importlib
 import os
 import sys
-import time
 from okit.utils.log import with_timing
 
 def auto_register_commands(package, package_path, parent_group):
@@ -29,11 +28,9 @@ def auto_register_commands(package, package_path, parent_group):
                 print(f"Failed to import {full_modname}: {e}", file=sys.stderr)
 
 def register_all_tools(main_group=None):
-    import time
-    from okit import net, fs
+    from okit import tools
     tool_packages = [
-        ("okit.net", os.path.dirname(net.__file__)),
-        ("okit.fs", os.path.dirname(fs.__file__)),
+        ("okit.tools", os.path.dirname(tools.__file__)),
     ]
     if main_group is None:
         from .main import main as main_group
