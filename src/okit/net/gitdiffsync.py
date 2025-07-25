@@ -248,9 +248,9 @@ def fix_target_root_path(target_root: str) -> str:
 @click.option('--max-depth', type=int, default=5, show_default=True, help='Maximum recursion depth for directory sync')
 @click.option('--recursive/--no-recursive', default=True, show_default=True, help='Enable or disable recursive directory sync')
 def cli(source_dirs, host, port, user, target_root, dry_run, max_depth, recursive):
+    """Synchronize Git project folders to remote Linux server."""
     import paramiko
     from paramiko.ssh_exception import AuthenticationException, SSHException
-    """Synchronize Git project folders to remote Linux server."""
     target_root = fix_target_root_path(target_root)
 
     logger.debug(f"Source directories: {source_dirs}")
