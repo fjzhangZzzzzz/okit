@@ -9,8 +9,8 @@ import click
 
 from okit.utils.version import get_version
 from okit.utils.log import logger
-from okit.cli.autoreg import register_all_tools
-from okit.cli.completion import completion
+from okit.core.autoreg import register_all_tools
+from okit.core.completion import completion
 
 
 @click.group()
