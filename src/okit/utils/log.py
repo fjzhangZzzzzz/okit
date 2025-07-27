@@ -91,19 +91,3 @@ class _LazyLogger:
 
 
 logger = _LazyLogger()
-
-
-def with_timing(func: Callable[..., T]) -> Callable[..., T]:
-    import time
-    from functools import wraps
-
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> T:
-        start = time.time()
-        try:
-            return func(*args, **kwargs)
-        finally:
-            elapsed = time.time() - start
-            logger.info(f"Command execution time: {elapsed:.2f} seconds")
-
-    return wrapper
