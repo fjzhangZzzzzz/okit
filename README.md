@@ -65,26 +65,33 @@ uv tool install okit
 ```
 okit/
   ├── cli/           # 命令行入口
+  ├── core/          # 核心框架
+  ├── tools/         # 工具脚本
   ├── utils/         # 通用工具函数
-  ├── fs/            # 文件系统相关工具
-  ├── net/           # 网络相关工具
   └── __init__.py
 ```
 
-命令行入口中会自动扫描已知工具分类目录下脚本，自动导入并注册 cli 命令。
+命令行入口会自动扫描 `tools/` 目录下的脚本，自动导入并注册 CLI 命令。
 
-对于工具脚本，示例如下：
+#### 工具脚本开发
+
+工具脚本使用 `BaseTool` 基类和 `@okit_tool` 装饰器开发：
+
 ```python
-# okit/net/http_client.py
-import click
+from okit.core.base_tool import BaseTool
+from okit.core.tool_decorator import okit_tool
 
-@click.command()
-def cli():
-    """HTTP 客户端工具"""
-    click.echo("Hello from http_client!")
+@okit_tool("toolname", "Tool description")
+class MyTool(BaseTool):
+    def _add_cli_commands(self, cli_group):
+        # 添加 CLI 命令
+        pass
 ```
 
-关于工具脚本的日志输出：
+详细开发指南请参考 `src/okit/tools/minimal_example.py` 示例。
+
+#### 日志输出
+
 ```python
 from okit.utils.log import logger, console
 

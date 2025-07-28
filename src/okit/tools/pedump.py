@@ -18,10 +18,14 @@ from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 import click
 
-from okit.utils.log import logger
+from okit.utils.log import logger, console
+from okit.core.base_tool import BaseTool
+from okit.core.tool_decorator import okit_tool
+
 
 class PEFormatError(Exception):
     pass
+
 
 class PEParser:
     """PE file parser"""
@@ -98,7 +102,7 @@ class PEParser:
                 "Subsystem": hex(fields[7])
             }
         else:
-            fmt = "<HBBLLLHHHHHH"
+            fmt = "<HBBLLLIHHHHHH"
             size = struct.calcsize(fmt)
             fields = struct.unpack(fmt, self.data[opt_header_offset:opt_header_offset+size])
             self.optional_header = {
@@ -112,105 +116,180 @@ class PEParser:
     def _parse_sections(self):
         e_lfanew = self.dos_header["e_lfanew"]
         num_sections = self.pe_header["NumberOfSections"]
-        opt_header_size = self.pe_header["OptionalHeaderSize"]
-        section_table_offset = e_lfanew + 24 + opt_header_size
-        section_size = 40
-        self.sections = []
+        section_offset = e_lfanew + 24 + self.pe_header["OptionalHeaderSize"]
+        
         for i in range(num_sections):
-            offset = section_table_offset + i * section_size
-            if len(self.data) < offset + section_size:
-                logger.warning(f"Section {i} header out of file bounds, skipping")
-                continue
-            entry = self.data[offset:offset+section_size]
-            name = entry[:8].rstrip(b'\x00').decode(errors="replace")
-            virtual_size, virtual_addr, size_raw, ptr_raw = struct.unpack("<LLLL", entry[8:24])
-            characteristics = struct.unpack("<L", entry[36:40])[0]
+            section_data = self.data[section_offset + i*40:section_offset + (i+1)*40]
+            if len(section_data) < 40:
+                break
+            name, virtual_size, virtual_address, size_of_raw_data, pointer_to_raw_data, pointer_to_relocations, pointer_to_line_numbers, num_relocations, num_line_numbers, characteristics = struct.unpack("<8sLLLLLLHH", section_data)
+            section_name = name.decode(errors="replace").rstrip('\x00')
             self.sections.append({
-                "Name": name,
-                "VirtualSize": hex(virtual_size),
-                "VirtualAddress": hex(virtual_addr),
-                "SizeOfRawData": hex(size_raw),
-                "PointerToRawData": hex(ptr_raw),
+                "Name": section_name,
+                "VirtualSize": virtual_size,
+                "VirtualAddress": hex(virtual_address),
+                "SizeOfRawData": size_of_raw_data,
+                "PointerToRawData": pointer_to_raw_data,
                 "Characteristics": hex(characteristics)
             })
-        logger.debug(f"Sections: {self.sections}")
+        logger.debug(f"Parsed {len(self.sections)} sections")
 
     def get_info(self) -> Dict[str, Any]:
+        """获取 PE 文件信息"""
         return {
-            "file": str(self.file_path),
+            "file_path": str(self.file_path),
             "dos_header": self.dos_header,
             "pe_header": self.pe_header,
             "optional_header": self.optional_header,
             "sections": self.sections
         }
 
-@click.command()
-@click.argument('files', nargs=-1, type=click.Path(exists=True, path_type=Path))
-@click.option('--format', '-f', type=click.Choice(['table', 'json', 'csv']), 
-              default='table', help='Output format')
-def cli(files: Tuple[Path, ...], format: str):
-    """
-    Parse PE file (EXE/DLL) header and section information.
-    """
-    import json
-    import csv
-    import io
 
-    if not files:
-        logger.error("No files specified")
-        sys.exit(1)
+@okit_tool("pedump", "PE File Info Parser")
+class PEDump(BaseTool):
+    """PE 文件信息解析工具"""
 
-    results = []
-    for file_path in files:
+    def __init__(self, tool_name: str, description: str = ""):
+        super().__init__(tool_name, description)
+
+    def _get_cli_help(self) -> str:
+        """自定义 CLI 帮助信息"""
+        return """
+PE Dump Tool - Parse PE file (EXE/DLL) header and section information.
+
+This tool analyzes PE files and displays:
+• DOS header information
+• PE header details
+• Optional header data
+• Section information
+• File characteristics and metadata
+
+Use 'pedump --help' to see available commands.
+        """.strip()
+
+    def _get_cli_short_help(self) -> str:
+        """自定义 CLI 简短帮助信息"""
+        return "Parse PE file (EXE/DLL) header and section information"
+
+    def _add_cli_commands(self, cli_group: click.Group) -> None:
+        """添加工具特定的 CLI 命令"""
+
+        @cli_group.command()
+        @click.argument('files', nargs=-1, type=click.Path(exists=True, path_type=Path))
+        @click.option('--format', '-f', type=click.Choice(['table', 'json', 'csv']), 
+                      default='table', help='Output format')
+        def parse(files: Tuple[Path, ...], format: str) -> None:
+            """Parse PE files and display information"""
+            try:
+                self.logger.info(f"Executing parse command, files: {files}, format: {format}")
+                
+                if not files:
+                    console.print("[red]No files specified[/red]")
+                    return
+                
+                for file_path in files:
+                    self._parse_pe_file(file_path, format)
+                    
+            except Exception as e:
+                self.logger.error(f"parse command execution failed: {e}")
+                console.print(f"[red]Error: {e}[/red]")
+
+    def _parse_pe_file(self, file_path: Path, format: str) -> None:
+        """解析单个 PE 文件"""
         try:
             parser = PEParser(file_path)
             parser.parse()
             info = parser.get_info()
-            results.append(info)
-            logger.info(f"Parsed file: {file_path}")
+            
+            if format == 'json':
+                import json
+                console.print(json.dumps(info, indent=2))
+            elif format == 'csv':
+                self._output_csv(info)
+            else:
+                self._output_table(info)
+                
+        except PEFormatError as e:
+            console.print(f"[red]PE format error for {file_path}: {e}[/red]")
         except Exception as e:
-            logger.error(f"Failed to parse {file_path}: {e}")
+            console.print(f"[red]Error parsing {file_path}: {e}[/red]")
 
-    if not results:
-        logger.error("No valid PE files parsed")
-        sys.exit(1)
+    def _output_table(self, info: Dict[str, Any]) -> None:
+        """以表格形式输出信息"""
+        from rich.table import Table
+        
+        # 文件信息表格
+        file_table = Table(title=f"PE File: {info['file_path']}")
+        file_table.add_column("Property", style="cyan")
+        file_table.add_column("Value", style="green")
+        
+        file_table.add_row("File Path", info['file_path'])
+        file_table.add_row("Machine", info['pe_header']['Machine'])
+        file_table.add_row("Sections", str(info['pe_header']['NumberOfSections']))
+        file_table.add_row("Entry Point", info['optional_header']['AddressOfEntryPoint'])
+        file_table.add_row("Image Base", info['optional_header']['ImageBase'])
+        file_table.add_row("Subsystem", info['optional_header']['Subsystem'])
+        
+        console.print(file_table)
+        
+        # 节信息表格
+        if info['sections']:
+            section_table = Table(title="Sections")
+            section_table.add_column("Name", style="cyan")
+            section_table.add_column("Virtual Size", style="green")
+            section_table.add_column("Virtual Address", style="blue")
+            section_table.add_column("Raw Size", style="yellow")
+            
+            for section in info['sections']:
+                section_table.add_row(
+                    section['Name'],
+                    str(section['VirtualSize']),
+                    section['VirtualAddress'],
+                    str(section['SizeOfRawData'])
+                )
+            
+            console.print(section_table)
 
-    if format == 'table':
-        for info in results:
-            click.echo(f"File: {info['file']}")
-            click.echo("DOS Header:")
-            for k, v in info['dos_header'].items():
-                click.echo(f"  {k}: {v}")
-            click.echo("PE Header:")
-            for k, v in info['pe_header'].items():
-                click.echo(f"  {k}: {v}")
-            click.echo("Optional Header:")
-            for k, v in info['optional_header'].items():
-                click.echo(f"  {k}: {v}")
-            click.echo("Sections:")
-            click.echo(f"{'Name':<10} {'VirtSize':<10} {'VirtAddr':<10} {'RawSize':<10} {'RawPtr':<10} {'Charact.':<10}")
-            for s in info['sections']:
-                click.echo(f"{s['Name']:<10} {s['VirtualSize']:<10} {s['VirtualAddress']:<10} {s['SizeOfRawData']:<10} {s['PointerToRawData']:<10} {s['Characteristics']:<10}")
-            click.echo("-" * 60)
-    elif format == 'json':
-        click.echo(json.dumps(results, indent=2))
-    elif format == 'csv':
+    def _output_csv(self, info: Dict[str, Any]) -> None:
+        """以 CSV 形式输出信息"""
+        import csv
+        import io
+        
         output = io.StringIO()
-        fieldnames = ['file', 'section_name', 'virtual_size', 'virtual_address', 'size_of_raw_data', 'pointer_to_raw_data', 'characteristics']
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        writer.writeheader()
-        for info in results:
-            for s in info['sections']:
-                writer.writerow({
-                    'file': info['file'],
-                    'section_name': s['Name'],
-                    'virtual_size': s['VirtualSize'],
-                    'virtual_address': s['VirtualAddress'],
-                    'size_of_raw_data': s['SizeOfRawData'],
-                    'pointer_to_raw_data': s['PointerToRawData'],
-                    'characteristics': s['Characteristics']
-                })
-        click.echo(output.getvalue())
+        writer = csv.writer(output)
+        
+        # 写入文件信息
+        writer.writerow(['Property', 'Value'])
+        writer.writerow(['File Path', info['file_path']])
+        writer.writerow(['Machine', info['pe_header']['Machine']])
+        writer.writerow(['Sections', info['pe_header']['NumberOfSections']])
+        writer.writerow(['Entry Point', info['optional_header']['AddressOfEntryPoint']])
+        writer.writerow(['Image Base', info['optional_header']['ImageBase']])
+        writer.writerow(['Subsystem', info['optional_header']['Subsystem']])
+        
+        # 写入节信息
+        writer.writerow([])
+        writer.writerow(['Section Name', 'Virtual Size', 'Virtual Address', 'Raw Size'])
+        for section in info['sections']:
+            writer.writerow([
+                section['Name'],
+                section['VirtualSize'],
+                section['VirtualAddress'],
+                section['SizeOfRawData']
+            ])
+        
+        console.print(output.getvalue())
 
-if __name__ == '__main__':
-    cli()
+    def validate_config(self) -> bool:
+        """验证配置"""
+        if not self.tool_name:
+            self.logger.warning("Tool name is empty")
+            return False
+
+        self.logger.info("Configuration validation passed")
+        return True
+
+    def _cleanup_impl(self) -> None:
+        """自定义清理逻辑"""
+        self.logger.info("Executing custom cleanup logic")
+        pass
