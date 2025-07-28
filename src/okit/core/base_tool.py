@@ -1,7 +1,7 @@
 import click
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, Optional, Type, List
+from typing import Dict, Any, Optional, Union, Type, List
 import json
 import logging
 from datetime import datetime
@@ -29,15 +29,15 @@ class BaseTool(ABC):
 
         # Initialize managers
         self._init_managers()
-        
+
         # Initialize config and data directories
         self._init_config_data()
 
         # Tool lifecycle
         self._start_time = datetime.now()
-        
+
         # YAML instance, created on demand
-        self._yaml = None
+        self._yaml: Optional[YAML] = None
 
     def _init_managers(self) -> None:
         """Initialize various managers"""
@@ -53,6 +53,54 @@ class BaseTool(ABC):
         self._ensure_dir(self._get_okit_root_dir())
         self._ensure_dir(self._get_tool_config_dir())
         self._ensure_dir(self._get_tool_data_dir())
+
+    def is_git_bash(self) -> bool:
+        """Check if running in git bash environment (public method for tools)"""
+        return self._is_git_bash()
+
+    def convert_to_git_bash_path(self, path: Path) -> str:
+        """Convert Windows path to git bash compatible path (public method for tools)"""
+        if not self._is_git_bash():
+            return str(path)
+
+        # Convert Windows path to Unix style for git bash
+        path_str = str(path)
+        if ":" in path_str and "\\" in path_str:  # Windows path like C:\Users\...
+            # Convert C:\Users\... to /c/Users/...
+            drive, rest = path_str.split(":", 1)
+            unix_path = f"/{drive.lower()}{rest.replace('\\', '/')}"
+            return unix_path
+
+        return path_str
+
+    def _is_git_bash(self) -> bool:
+        """Detect if running in git bash environment"""
+        import os
+
+        # 1. Check MSYSTEM environment variable
+        msystem = os.environ.get("MSYSTEM", "")
+        if msystem not in ["MINGW32", "MINGW64"]:
+            return False
+
+        # 2. Check SHELL environment variable (optional, may not exist in git bash)
+        shell = os.environ.get("SHELL", "")
+        if shell and not shell.endswith("bash"):
+            return False
+
+        # 3. Check for Windows path mapping feature using environment variables
+        # In git bash, we can check for specific environment variables that indicate Windows path mapping
+        home = os.environ.get("HOME", "")
+
+        # Check if HOME contains Windows path (like C:\Users\...)
+        if home and ":" in home and "\\" in home:
+            return True
+
+        # Alternative: check for git bash specific environment variables
+        ostype = os.environ.get("OSTYPE", "")
+        if ostype.startswith("msys"):
+            return True
+
+        return False
 
     def _get_okit_root_dir(self) -> Path:
         """Get okit root directory (~/.okit/)"""
@@ -77,6 +125,7 @@ class BaseTool(ABC):
             self._yaml = YAML()
             self._yaml.preserve_quotes = True
             self._yaml.indent(mapping=2, sequence=4, offset=2)
+        assert self._yaml is not None
         return self._yaml
 
     # ===== Configuration Management Interface =====
@@ -103,13 +152,15 @@ class BaseTool(ABC):
         default_config = default or {}
 
         if not config_file.exists():
-            self.logger.info(f"Config file does not exist, using default config: {config_file}")
+            self.logger.info(
+                f"Config file does not exist, using default config: {config_file}"
+            )
             return default_config.copy()
 
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 config = self._get_yaml().load(f) or {}
-            
+
             self.logger.info(f"Successfully loaded config file: {config_file}")
             return config
         except Exception as e:
@@ -127,14 +178,14 @@ class BaseTool(ABC):
             bool: Whether save was successful
         """
         config_file = self.get_config_file()
-        
+
         try:
             # Ensure directory exists
             config_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             with open(config_file, "w", encoding="utf-8") as f:
                 self._get_yaml().dump(config, f)
-            
+
             self.logger.info(f"Successfully saved config file: {config_file}")
             return True
         except Exception as e:
@@ -153,11 +204,11 @@ class BaseTool(ABC):
             Any: Configuration value
         """
         config = self.load_config()
-        
+
         # Handle nested keys
-        keys = key.split('.')
+        keys = key.split(".")
         value = config
-        
+
         try:
             for k in keys:
                 value = value[k]
@@ -177,20 +228,20 @@ class BaseTool(ABC):
             bool: Whether setting was successful
         """
         config = self.load_config()
-        
+
         # Handle nested keys
-        keys = key.split('.')
+        keys = key.split(".")
         current = config
-        
+
         # Create nested structure
         for k in keys[:-1]:
             if k not in current or not isinstance(current[k], dict):
                 current[k] = {}
             current = current[k]
-        
+
         # Set value
         current[keys[-1]] = value
-        
+
         return self.save_config(config)
 
     def has_config(self) -> bool:
@@ -239,7 +290,7 @@ class BaseTool(ABC):
             bool: Whether cleanup was successful
         """
         target_path = self._get_tool_data_dir().joinpath(*path_parts)
-        
+
         try:
             if target_path.exists():
                 if target_path.is_file():
@@ -264,10 +315,10 @@ class BaseTool(ABC):
             List[Path]: List of file paths
         """
         target_dir = self._get_tool_data_dir().joinpath(*path_parts)
-        
+
         if not target_dir.exists() or not target_dir.is_dir():
             return []
-        
+
         try:
             return list(target_dir.iterdir())
         except Exception as e:
@@ -284,17 +335,17 @@ class BaseTool(ABC):
             Optional[Path]: Backup file path, None if backup failed
         """
         config_file = self.get_config_file()
-        
+
         if not config_file.exists():
             return None
-        
+
         try:
             backup_dir = self.get_data_path() / "backups"
             backup_dir.mkdir(parents=True, exist_ok=True)
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_file = backup_dir / f"config.yaml.{timestamp}.bak"
-            
+
             shutil.copy2(config_file, backup_file)
             self.logger.info(f"Config file backed up: {backup_file}")
             return backup_file
@@ -313,16 +364,16 @@ class BaseTool(ABC):
             bool: Whether restore was successful
         """
         config_file = self.get_config_file()
-        
+
         try:
             # Backup current config first
             if config_file.exists():
                 self.backup_config()
-            
+
             # Restore config
             config_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(backup_path, config_file)
-            
+
             self.logger.info(f"Config file restored: {config_file}")
             return True
         except Exception as e:
@@ -345,7 +396,7 @@ class BaseTool(ABC):
 
     def create_cli_group(
         self, tool_name: str = "", description: str = ""
-    ) -> click.Group:
+    ) -> Union[click.Group, click.Command]:
         """
         Create Click command group for tool
 
@@ -357,8 +408,8 @@ class BaseTool(ABC):
         if not description:
             description = self.description
 
-        use_subcommands = getattr(self, 'use_subcommands', True)
-        
+        use_subcommands = getattr(self, "use_subcommands", True)
+
         if use_subcommands:
             # Create subcommand group
             @click.group()
@@ -378,7 +429,7 @@ class BaseTool(ABC):
             # Create direct command (no subcommands)
             # We need to create a command that can be called directly
             # We'll create a temporary group to add the command, then return the command itself
-            
+
             @click.group()
             def temp_group() -> None:
                 """Temporary group for command creation"""
@@ -386,7 +437,7 @@ class BaseTool(ABC):
 
             # Add tool-specific commands to the temporary group
             self._add_cli_commands(temp_group)
-            
+
             # Get the first command from the temporary group
             if temp_group.commands:
                 main_command = list(temp_group.commands.values())[0]
@@ -398,9 +449,10 @@ class BaseTool(ABC):
             else:
                 # Fallback: create a simple command
                 @click.command()
-                def fallback_command():
+                def fallback_command() -> None:
                     """Fallback command"""
                     pass
+
                 fallback_command.name = tool_name
                 fallback_command.help = self._get_cli_help()
                 fallback_command.short_help = self._get_cli_short_help()
