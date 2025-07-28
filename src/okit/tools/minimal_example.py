@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
 from okit.utils.log import console
@@ -17,14 +17,6 @@ class MinimalExample(BaseTool):
         """Custom CLI help information"""
         return """
 Minimal Example Tool - Demonstrates BaseTool and configuration management features
-
-This tool demonstrates:
-• BaseTool basic functionality
-• Configuration management interfaces
-• Data directory management
-• CLI command organization
-
-Use 'minimal --help' to see available commands.
         """.strip()
 
     def _get_cli_short_help(self) -> str:
@@ -40,7 +32,7 @@ Use 'minimal --help' to see available commands.
             try:
                 self.logger.info("Executing hello command")
                 console.print("[green]Hello from Minimal Example Tool![/green]")
-                
+
                 # Show tool information
                 tool_info = self.get_tool_info()
                 console.print(f"[blue]Tool Information:[/blue]")
@@ -48,19 +40,21 @@ Use 'minimal --help' to see available commands.
                 console.print(f"  Description: {tool_info['description']}")
                 console.print(f"  Config Path: {tool_info['config_path']}")
                 console.print(f"  Data Path: {tool_info['data_path']}")
-                
+
             except Exception as e:
                 self.logger.error(f"hello command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
-        @click.option('--key', '-k', required=True, help='Configuration key')
-        @click.option('--value', '-v', help='Configuration value')
-        def config(key: str, value: str) -> None:
+        @click.option("--key", "-k", required=True, help="Configuration key")
+        @click.option("--value", "-v", default=None, help="Configuration value")
+        def config(key: str, value: Optional[str]) -> None:
             """Configuration management demonstration"""
             try:
-                self.logger.info(f"Executing config command, key: {key}, value: {value}")
-                
+                self.logger.info(
+                    f"Executing config command, key: {key}, value: {value}"
+                )
+
                 if value is None:
                     # Read configuration
                     config_value = self.get_config_value(key, "Not set")
@@ -68,26 +62,28 @@ Use 'minimal --help' to see available commands.
                 else:
                     # Set configuration
                     if self.set_config_value(key, value):
-                        console.print(f"[green]Successfully set config {key} = {value}[/green]")
+                        console.print(
+                            f"[green]Successfully set config {key} = {value}[/green]"
+                        )
                     else:
                         console.print(f"[red]Failed to set config[/red]")
-                        
+
             except Exception as e:
                 self.logger.error(f"config command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
-        @click.option('--path', '-p', default='', help='Data path')
+        @click.option("--path", "-p", default="", help="Data path")
         def data(path: str) -> None:
             """Data directory management demonstration"""
             try:
                 self.logger.info(f"Executing data command, path: {path}")
-                
+
                 if path:
                     # Ensure data directory exists
                     data_dir = self.ensure_data_dir(path)
                     console.print(f"[green]Data directory created: {data_dir}[/green]")
-                    
+
                     # List files
                     files = self.list_data_files(path)
                     if files:
@@ -100,7 +96,7 @@ Use 'minimal --help' to see available commands.
                     # Show data directory information
                     data_path = self.get_data_path()
                     console.print(f"[blue]Data root directory:[/blue] {data_path}")
-                    
+
                     # List all data files
                     all_files = self.list_data_files()
                     if all_files:
@@ -109,7 +105,7 @@ Use 'minimal --help' to see available commands.
                             console.print(f"  {file.name}")
                     else:
                         console.print("[yellow]No data files[/yellow]")
-                        
+
             except Exception as e:
                 self.logger.error(f"data command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
@@ -119,13 +115,17 @@ Use 'minimal --help' to see available commands.
             """Configuration backup demonstration"""
             try:
                 self.logger.info("Executing backup command")
-                
+
                 backup_path = self.backup_config()
                 if backup_path:
-                    console.print(f"[green]Configuration backed up: {backup_path}[/green]")
+                    console.print(
+                        f"[green]Configuration backed up: {backup_path}[/green]"
+                    )
                 else:
-                    console.print("[yellow]No backup needed (config file doesn't exist)[/yellow]")
-                    
+                    console.print(
+                        "[yellow]No backup needed (config file doesn't exist)[/yellow]"
+                    )
+
             except Exception as e:
                 self.logger.error(f"backup command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
@@ -135,13 +135,13 @@ Use 'minimal --help' to see available commands.
             """Display detailed tool information"""
             try:
                 self.logger.info("Executing info command")
-                
+
                 # Tool information
                 tool_info = self.get_tool_info()
                 console.print("[bold blue]Tool Information[/bold blue]")
                 for key, value in tool_info.items():
                     console.print(f"  {key}: {value}")
-                
+
                 # Configuration information
                 console.print("\n[bold blue]Configuration Information[/bold blue]")
                 config_path = self.get_config_path()
@@ -149,20 +149,24 @@ Use 'minimal --help' to see available commands.
                 console.print(f"  Config directory: {config_path}")
                 console.print(f"  Config file: {config_file}")
                 console.print(f"  Config file exists: {config_file.exists()}")
-                
+
                 # Data information
                 console.print("\n[bold blue]Data Information[/bold blue]")
                 data_path = self.get_data_path()
                 console.print(f"  Data directory: {data_path}")
                 console.print(f"  Data directory exists: {data_path.exists()}")
-                
+
                 # List configuration files
-                config_files = list(config_path.glob("*.yaml")) + list(config_path.glob("*.yml"))
+                config_files = list(config_path.glob("*.yaml")) + list(
+                    config_path.glob("*.yml")
+                )
                 if config_files:
-                    console.print(f"  Configuration files: {[f.name for f in config_files]}")
+                    console.print(
+                        f"  Configuration files: {[f.name for f in config_files]}"
+                    )
                 else:
                     console.print("  Configuration files: None")
-                    
+
             except Exception as e:
                 self.logger.error(f"info command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
