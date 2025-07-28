@@ -18,6 +18,10 @@ def okit_tool(
     """
 
     def decorator(tool_class: Type[BaseTool]) -> Type[BaseTool]:
+        # 将 tool_name 和 description 存储为类属性
+        tool_class.tool_name = tool_name
+        tool_class.description = description
+        
         # 创建全局 cli 变量（自动注册机制需要）
         tool_instance = tool_class(tool_name, description)
         cli = tool_instance.create_cli_group(tool_name, description)
