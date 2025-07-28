@@ -4,7 +4,7 @@ from .base_tool import BaseTool
 
 
 def okit_tool(
-    tool_name: str, description: str = ""
+    tool_name: str, description: str = "", use_subcommands: bool = True
 ) -> Callable[[Type[BaseTool]], Type[BaseTool]]:
     """
     装饰器：将类转换为 okit 工具
@@ -21,6 +21,7 @@ def okit_tool(
         # 将 tool_name 和 description 存储为类属性
         tool_class.tool_name = tool_name
         tool_class.description = description
+        tool_class.use_subcommands = use_subcommands
         
         # 创建全局 cli 变量（自动注册机制需要）
         tool_instance = tool_class(tool_name, description)
