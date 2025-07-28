@@ -1,169 +1,176 @@
 import click
 from pathlib import Path
-from typing import Dict, List
-from okit.utils.log import console
+from typing import Dict, Any
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
+from okit.utils.log import console
 
 
 @okit_tool("minimal", "Minimal Example Tool")
 class MinimalExample(BaseTool):
-    """Minimal Example Tool - Demonstrates BaseTool's basic functionality"""
+    """Minimal Example Tool - Demonstrates BaseTool and configuration management features"""
 
     def __init__(self, tool_name: str, description: str = ""):
         super().__init__(tool_name, description)
 
-        # 工具特定的初始化
-        self.example_data = {"message": "Hello from MinimalExample!"}
-
     def _get_cli_help(self) -> str:
-        """自定义 CLI 帮助信息"""
+        """Custom CLI help information"""
         return """
-Minimal Example Tool - A comprehensive demonstration of BaseTool functionality.
+Minimal Example Tool - Demonstrates BaseTool and configuration management features
 
-This tool showcases various features of the BaseTool framework:
-• Basic command structure and parameter handling
-• Rich console output with colors and formatting
-• Configuration validation
-• Nested command groups
-• File operations and data processing
-• Error handling and logging
+This tool demonstrates:
+• BaseTool basic functionality
+• Configuration management interfaces
+• Data directory management
+• CLI command organization
 
-Use 'minimal-example --help' to see available commands.
+Use 'minimal --help' to see available commands.
         """.strip()
 
     def _get_cli_short_help(self) -> str:
-        """自定义 CLI 简短帮助信息"""
-        return "Minimal example tool demonstrating BaseTool features"
+        """Custom CLI short help information"""
+        return "Minimal example tool"
 
     def _add_cli_commands(self, cli_group: click.Group) -> None:
-        """添加工具特定的 CLI 命令"""
+        """Add tool-specific CLI commands"""
 
-        # 命令1: 显示信息
         @cli_group.command()
-        @click.option("--name", "-n", default="World", help="要问候的名字")
-        def hello(name: str) -> None:
-            """Display greeting message"""
+        def hello() -> None:
+            """Simple greeting command"""
             try:
-                self.logger.info(f"Executing hello command with parameter: name={name}")
-                console.print(f"[green]Hello, {name}![/green]")
-                console.print(f"[blue]From tool: {self.tool_name}[/blue]")
+                self.logger.info("Executing hello command")
+                console.print("[green]Hello from Minimal Example Tool![/green]")
+                
+                # Show tool information
+                tool_info = self.get_tool_info()
+                console.print(f"[blue]Tool Information:[/blue]")
+                console.print(f"  Name: {tool_info['name']}")
+                console.print(f"  Description: {tool_info['description']}")
+                console.print(f"  Config Path: {tool_info['config_path']}")
+                console.print(f"  Data Path: {tool_info['data_path']}")
+                
             except Exception as e:
                 self.logger.error(f"hello command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
-        # 命令2: 显示工具信息
+        @cli_group.command()
+        @click.option('--key', '-k', required=True, help='Configuration key')
+        @click.option('--value', '-v', help='Configuration value')
+        def config(key: str, value: str) -> None:
+            """Configuration management demonstration"""
+            try:
+                self.logger.info(f"Executing config command, key: {key}, value: {value}")
+                
+                if value is None:
+                    # Read configuration
+                    config_value = self.get_config_value(key, "Not set")
+                    console.print(f"[blue]Config {key}:[/blue] {config_value}")
+                else:
+                    # Set configuration
+                    if self.set_config_value(key, value):
+                        console.print(f"[green]Successfully set config {key} = {value}[/green]")
+                    else:
+                        console.print(f"[red]Failed to set config[/red]")
+                        
+            except Exception as e:
+                self.logger.error(f"config command execution failed: {e}")
+                console.print(f"[red]Error: {e}[/red]")
+
+        @cli_group.command()
+        @click.option('--path', '-p', default='', help='Data path')
+        def data(path: str) -> None:
+            """Data directory management demonstration"""
+            try:
+                self.logger.info(f"Executing data command, path: {path}")
+                
+                if path:
+                    # Ensure data directory exists
+                    data_dir = self.ensure_data_dir(path)
+                    console.print(f"[green]Data directory created: {data_dir}[/green]")
+                    
+                    # List files
+                    files = self.list_data_files(path)
+                    if files:
+                        console.print(f"[blue]Directory contents:[/blue]")
+                        for file in files:
+                            console.print(f"  {file.name}")
+                    else:
+                        console.print("[yellow]Directory is empty[/yellow]")
+                else:
+                    # Show data directory information
+                    data_path = self.get_data_path()
+                    console.print(f"[blue]Data root directory:[/blue] {data_path}")
+                    
+                    # List all data files
+                    all_files = self.list_data_files()
+                    if all_files:
+                        console.print(f"[blue]All data files:[/blue]")
+                        for file in all_files:
+                            console.print(f"  {file.name}")
+                    else:
+                        console.print("[yellow]No data files[/yellow]")
+                        
+            except Exception as e:
+                self.logger.error(f"data command execution failed: {e}")
+                console.print(f"[red]Error: {e}[/red]")
+
+        @cli_group.command()
+        def backup() -> None:
+            """Configuration backup demonstration"""
+            try:
+                self.logger.info("Executing backup command")
+                
+                backup_path = self.backup_config()
+                if backup_path:
+                    console.print(f"[green]Configuration backed up: {backup_path}[/green]")
+                else:
+                    console.print("[yellow]No backup needed (config file doesn't exist)[/yellow]")
+                    
+            except Exception as e:
+                self.logger.error(f"backup command execution failed: {e}")
+                console.print(f"[red]Error: {e}[/red]")
+
         @cli_group.command()
         def info() -> None:
-            """Display tool information"""
+            """Display detailed tool information"""
             try:
                 self.logger.info("Executing info command")
-                info = self.get_tool_info()
-
-                from rich.table import Table
-
-                table = Table(title="Tool Information")
-                table.add_column("Property", style="cyan")
-                table.add_column("Value", style="green")
-
-                for key, value in info.items():
-                    table.add_row(key, str(value))
-                console.print(table)
-
+                
+                # Tool information
+                tool_info = self.get_tool_info()
+                console.print("[bold blue]Tool Information[/bold blue]")
+                for key, value in tool_info.items():
+                    console.print(f"  {key}: {value}")
+                
+                # Configuration information
+                console.print("\n[bold blue]Configuration Information[/bold blue]")
+                config_path = self.get_config_path()
+                config_file = self.get_config_file()
+                console.print(f"  Config directory: {config_path}")
+                console.print(f"  Config file: {config_file}")
+                console.print(f"  Config file exists: {config_file.exists()}")
+                
+                # Data information
+                console.print("\n[bold blue]Data Information[/bold blue]")
+                data_path = self.get_data_path()
+                console.print(f"  Data directory: {data_path}")
+                console.print(f"  Data directory exists: {data_path.exists()}")
+                
+                # List configuration files
+                config_files = list(config_path.glob("*.yaml")) + list(config_path.glob("*.yml"))
+                if config_files:
+                    console.print(f"  Configuration files: {[f.name for f in config_files]}")
+                else:
+                    console.print("  Configuration files: None")
+                    
             except Exception as e:
                 self.logger.error(f"info command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
-        # 命令3: 测试配置验证
-        @cli_group.command()
-        def test_config() -> None:
-            """Test configuration validation"""
-            try:
-                self.logger.info("Executing test_config command")
-                is_valid = self.validate_config()
-
-                if is_valid:
-                    console.print("[green]Configuration validation passed![/green]")
-                else:
-                    console.print("[yellow]Configuration validation failed![/yellow]")
-
-            except Exception as e:
-                self.logger.error(f"test_config command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
-
-        # 命令4: 带参数的命令
-        @cli_group.command()
-        @click.argument("message", required=False, default="默认消息")
-        @click.option("--repeat", "-r", type=int, default=1, help="重复次数")
-        @click.option("--uppercase", "-u", is_flag=True, help="转换为大写")
-        def echo(message: str, repeat: int, uppercase: bool) -> None:
-            """Echo message"""
-            try:
-                self.logger.info(
-                    f"Executing echo command with parameters: message={message}, repeat={repeat}, uppercase={uppercase}"
-                )
-
-                if uppercase:
-                    message = message.upper()
-
-                for i in range(repeat):
-                    console.print(f"[cyan]{i+1}: {message}[/cyan]")
-
-            except Exception as e:
-                self.logger.error(f"echo command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
-
-        # 命令5: 子命令组示例
-        @cli_group.group()
-        def advanced() -> None:
-            """Advanced functionality command group"""
-            pass
-
-        @advanced.command()
-        @click.argument("file_path", type=click.Path(exists=True, path_type=Path))
-        def read_file(file_path: Path) -> None:
-            """Read file content"""
-            try:
-                self.logger.info(f"Executing read_file command, file: {file_path}")
-
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-
-                console.print(f"[green]File {file_path} content:[/green]")
-                console.print(f"[white]{content}[/white]")
-
-            except Exception as e:
-                self.logger.error(f"read_file command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
-
-        @advanced.command()
-        @click.argument("numbers", nargs=-1, type=int)
-        def sum_numbers(numbers: tuple) -> None:
-            """Calculate sum of numbers"""
-            try:
-                self.logger.info(f"Executing sum_numbers command, numbers: {numbers}")
-
-                if not numbers:
-                    console.print("[yellow]No numbers provided[/yellow]")
-                    return
-
-                total = sum(numbers)
-                console.print(f"[green]Sum: {total}[/green]")
-                console.print(f"[blue]Numbers: {numbers}[/blue]")
-
-            except Exception as e:
-                self.logger.error(f"sum_numbers command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
-
     def validate_config(self) -> bool:
         """Validate configuration"""
-        # Simple configuration validation logic
         if not self.tool_name:
             self.logger.warning("Tool name is empty")
-            return False
-
-        if not self.example_data:
-            self.logger.warning("Example data is empty")
             return False
 
         self.logger.info("Configuration validation passed")
@@ -172,5 +179,4 @@ Use 'minimal-example --help' to see available commands.
     def _cleanup_impl(self) -> None:
         """Custom cleanup logic"""
         self.logger.info("Executing custom cleanup logic")
-        # Tool-specific cleanup code can be added here
         pass
