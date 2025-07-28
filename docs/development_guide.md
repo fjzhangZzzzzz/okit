@@ -38,6 +38,120 @@ class MyTool(BaseTool):
 
 详细开发指南请参考 `src/okit/tools/minimal_example.py` 示例。
 
+### 命令模式选择
+
+根据工具的复杂度，可以选择两种命令模式：
+
+#### 1. 复杂命令模式（使用子命令）
+
+适用于有多个功能模块的工具，如配置管理、数据操作、状态查询等：
+
+```python
+@okit_tool("complex_tool", "Complex tool with multiple features")
+class ComplexTool(BaseTool):
+    def _add_cli_commands(self, cli_group):
+        @cli_group.command()
+        @click.option('--key', required=True)
+        @click.option('--value')
+        def config(key: str, value: str):
+            """配置管理命令"""
+            pass
+        
+        @cli_group.command()
+        def status():
+            """状态查询命令"""
+            pass
+        
+        @cli_group.command()
+        def backup():
+            """备份命令"""
+            pass
+```
+
+**使用方式**：
+```bash
+okit complex_tool config --key api_url --value https://api.example.com
+okit complex_tool status
+okit complex_tool backup
+```
+
+#### 2. 简单命令模式（直接调用）
+
+适用于单一功能的工具，如文件同步、数据处理等：
+
+```python
+@okit_tool("simple_tool", "Simple tool with single function", use_subcommands=False)
+class SimpleTool(BaseTool):
+    def _add_cli_commands(self, cli_group):
+        @cli_group.command()
+        @click.option('--host', required=True)
+        @click.option('--user', required=True)
+        @click.option('--source', required=True)
+        def main(host: str, user: str, source: str):
+            """主要功能命令"""
+            pass
+```
+
+**使用方式**：
+```bash
+okit simple_tool --host server.com --user admin --source /path/to/files
+```
+
+#### 模式选择指南
+
+**何时使用子命令模式（默认）**：
+- 工具有多个独立的功能模块
+- 需要不同的参数组合
+- 用户需要明确选择操作类型
+- 例如：配置管理、状态查询、备份恢复等
+
+**何时使用直接调用模式**：
+- 工具只有单一主要功能
+- 参数相对固定
+- 用户希望简化调用
+- 例如：文件同步、数据处理、简单转换等
+
+#### 技术实现
+
+- **子命令模式**：`use_subcommands=True`（默认）
+  - 创建 `click.Group`
+  - 用户需要指定子命令：`okit tool subcommand --options`
+
+- **直接调用模式**：`use_subcommands=False`
+  - 创建 `click.Command`
+  - 用户直接调用：`okit tool --options`
+
+#### 实际示例
+
+**复杂命令示例**（`shellconfig.py`）：
+```python
+@okit_tool("shellconfig", "Shell configuration management tool")
+class ShellConfig(BaseTool):
+    def _add_cli_commands(self, cli_group):
+        @cli_group.command()
+        def sync():
+            """同步配置"""
+            pass
+        
+        @cli_group.command()
+        def status():
+            """查看状态"""
+            pass
+```
+
+**简单命令示例**（`gitdiffsync.py`）：
+```python
+@okit_tool("gitdiffsync", "Git project synchronization tool", use_subcommands=False)
+class GitDiffSync(BaseTool):
+    def _add_cli_commands(self, cli_group):
+        @cli_group.command()
+        @click.option('--host', required=True)
+        @click.option('--user', required=True)
+        def main(host: str, user: str):
+            """同步 Git 项目"""
+            pass
+```
+
 ### 日志输出
 
 ```python
@@ -256,6 +370,50 @@ class ExampleTool(BaseTool):
             info = self.get_tool_info()
             console.print(f"配置目录: {info['config_path']}")
             console.print(f"数据目录: {info['data_path']}")
+```
+
+### 简单命令示例
+
+```python
+@okit_tool("simple_example", "Simple Example Tool", use_subcommands=False)
+class SimpleExampleTool(BaseTool):
+    def _add_cli_commands(self, cli_group):
+        @cli_group.command()
+        @click.option('--input', required=True, help='Input file path')
+        @click.option('--output', required=True, help='Output file path')
+        @click.option('--format', default='json', help='Output format')
+        def main(input: str, output: str, format: str):
+            """处理文件的主要功能"""
+            # 读取输入文件
+            with open(input, 'r') as f:
+                data = f.read()
+            
+            # 处理数据
+            processed_data = self._process_data(data, format)
+            
+            # 保存输出
+            with open(output, 'w') as f:
+                f.write(processed_data)
+            
+            console.print(f"[green]处理完成: {input} -> {output}[/green]")
+    
+    def _process_data(self, data: str, format: str) -> str:
+        """数据处理逻辑"""
+        # 实际的数据处理代码
+        return f"Processed data in {format} format: {data}"
+```
+
+**使用方式对比**：
+
+复杂命令模式：
+```bash
+okit example config --key api_url --value https://api.example.com
+okit example info
+```
+
+简单命令模式：
+```bash
+okit simple_example --input data.txt --output result.json --format json
 ```
 
 ### 配置验证

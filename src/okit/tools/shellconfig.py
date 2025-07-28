@@ -12,8 +12,9 @@ from okit.core.tool_decorator import okit_tool
 from git import Repo, GitCommandError
 
 
-class ShellConfigManager:
-    """Shell configuration manager for multiple shells"""
+@okit_tool("shellconfig", "Shell configuration management tool")
+class ShellConfig(BaseTool):
+    """Shell configuration management tool"""
 
     SUPPORTED_SHELLS: Dict[str, Dict[str, Any]] = {
         "bash": {
@@ -39,65 +40,22 @@ class ShellConfigManager:
         },
     }
 
-    def __init__(self) -> None:
+    def __init__(self, tool_name: str, description: str = ""):
+        super().__init__(tool_name, description)
         self.home_dir = Path.home()
-        self.config_dir = self.home_dir / ".okit" / "shellconfig"
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        # 统一的 git 仓库路径
-        self.git_repo_path = self.config_dir / "shell_configs"
-        self.git_repo: Optional[Repo] = None
-        # Configuration file for tool settings
-        self.tool_config_file = self.config_dir / "config.json"
+        # Git repository path using BaseTool data directory
+        self.configs_repo_path = self.get_data_path() / "configs_repo"
+        self.configs_repo: Optional[Repo] = None
 
-    def get_tool_config(self) -> Dict[str, Any]:
-        """Get tool configuration"""
-        if not self.tool_config_file.exists():
-            return {}
+    def _get_cli_help(self) -> str:
+        """Custom CLI help information"""
+        return """
+Shell Config Tool - Manage shell configurations across multiple shells.
+        """.strip()
 
-        try:
-            with open(self.tool_config_file, "r", encoding="utf-8") as f:
-                return json.load(f)  # type: ignore
-        except Exception as e:
-            console.print(f"[yellow]Failed to read config file: {e}[/yellow]")
-            return {}
-
-    def set_tool_config(self, key: str, value: Any) -> bool:
-        """Set tool configuration parameter"""
-        try:
-            config = self.get_tool_config()
-            config[key] = value
-
-            with open(self.tool_config_file, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
-
-            return True
-        except Exception as e:
-            console.print(f"[red]Failed to write config: {e}[/red]")
-            return False
-
-    def get_tool_config_value(self, key: str) -> Optional[Any]:
-        """Get tool configuration parameter value"""
-        config = self.get_tool_config()
-        return config.get(key)
-
-    def list_tool_config(self) -> None:
-        """List all tool configuration parameters"""
-        config = self.get_tool_config()
-
-        if not config:
-            console.print("[yellow]No configuration parameters set[/yellow]")
-            return
-
-        from rich.table import Table
-
-        table = Table(title="Tool Configuration")
-        table.add_column("Parameter", style="cyan")
-        table.add_column("Value", style="green")
-
-        for key, value in config.items():
-            table.add_row(key, str(value))
-
-        console.print(table)
+    def _get_cli_short_help(self) -> str:
+        """Custom CLI short help information"""
+        return "Shell configuration management tool"
 
     def get_shell_info(self, shell_name: str) -> Dict[str, Any]:
         """Get shell configuration information"""
@@ -105,13 +63,23 @@ class ShellConfigManager:
             raise ValueError(f"Unsupported shell: {shell_name}")
         return self.SUPPORTED_SHELLS[shell_name]
 
-    def get_config_file_path(self, shell_name: str) -> Path:
-        """Get configuration file path for shell"""
-        return self.config_dir / f"{shell_name}_config"
+    def get_shell_config_dir(self, shell_name: str) -> Path:
+        """Get shell configuration directory path"""
+        return self.get_data_path() / shell_name
+
+    def get_shell_config_file(self, shell_name: str) -> Path:
+        """Get shell configuration file path"""
+        return self.get_shell_config_dir(shell_name) / "config"
 
     def get_repo_config_path(self, shell_name: str) -> Path:
         """Get repository configuration file path for shell"""
-        return self.git_repo_path / f"{shell_name}_config"
+        return self.configs_repo_path / shell_name / "config"
+
+    def ensure_shell_config_dir(self, shell_name: str) -> Path:
+        """Ensure shell configuration directory exists and return path"""
+        config_dir = self.get_shell_config_dir(shell_name)
+        config_dir.mkdir(parents=True, exist_ok=True)
+        return config_dir
 
     def create_default_config(self, shell_name: str) -> str:
         """Create default configuration content for shell"""
@@ -119,7 +87,7 @@ class ShellConfigManager:
         comment_char = shell_info["comment_char"]
 
         if shell_name in ["bash", "zsh"]:
-            # bash 和 zsh 使用相同的配置
+            # bash and zsh use the same configuration
             return f"""# {shell_name.title()} configuration
 {comment_char} This file is managed by okit shellconfig tool
 {comment_char} Manual changes will be overwritten
@@ -289,7 +257,7 @@ function showproxy {{
     def show_source_commands(self, shell_name: str) -> None:
         """Show commands to source the configuration"""
         shell_info = self.get_shell_info(shell_name)
-        config_file = self.get_config_file_path(shell_name)
+        config_file = self.get_shell_config_file(shell_name)
 
         if not config_file.exists():
             console.print(f"[yellow]Configuration file {config_file} does not exist[/yellow]")
@@ -310,41 +278,41 @@ function showproxy {{
                 console.print("[red]Error: repo_url is required[/red]")
                 return False
 
-            if self.git_repo_path.exists():
-                console.print(f"[yellow]Git repository already exists at {self.git_repo_path}[/yellow]")
+            if self.configs_repo_path.exists():
+                console.print(f"[yellow]Git repository already exists at {self.configs_repo_path}[/yellow]")
                 try:
-                    self.git_repo = Repo(self.git_repo_path)
+                    self.configs_repo = Repo(self.configs_repo_path)
                     console.print("[green]Using existing git repository[/green]")
                     return True
                 except GitCommandError:
                     console.print("[yellow]Existing directory is not a git repository, reinitializing...[/yellow]")
 
-            console.print(f"Setting up git repository at {self.git_repo_path}")
-            self.git_repo_path.mkdir(parents=True, exist_ok=True)
+            console.print(f"Setting up git repository at {self.configs_repo_path}")
+            self.configs_repo_path.mkdir(parents=True, exist_ok=True)
 
             # Initialize git repository
-            self.git_repo = Repo.init(self.git_repo_path)
+            self.configs_repo = Repo.init(self.configs_repo_path)
             console.print("[green]Git repository initialized[/green]")
 
             # Add remote origin
-            origin = self.git_repo.create_remote("origin", repo_url)
+            origin = self.configs_repo.create_remote("origin", repo_url)
             console.print(f"[green]Added remote origin: {repo_url}[/green]")
 
             # Try to pull existing content
             try:
                 origin.fetch()
-                self.git_repo.heads.main.checkout()
+                self.configs_repo.heads.main.checkout()
                 console.print("[green]Pulled existing content from remote repository[/green]")
             except Exception as e:
                 console.print(f"[yellow]Could not pull from remote: {e}[/yellow]")
                 console.print("[yellow]Creating initial commit...[/yellow]")
 
                 # Create initial commit
-                self.git_repo.index.add("*")
-                self.git_repo.index.commit("Initial commit")
+                self.configs_repo.index.add("*")
+                self.configs_repo.index.commit("Initial commit")
 
-            # Save repo_url to config
-            self.set_tool_config("repo_url", repo_url)
+            # Save repo_url to config using BaseTool interface
+            self.set_config_value("git.remote_url", repo_url)
             console.print("[green]Git repository setup completed[/green]")
             return True
 
@@ -355,12 +323,12 @@ function showproxy {{
     def update_repo(self) -> bool:
         """Update git repository"""
         try:
-            if not self.git_repo_path.exists():
+            if not self.configs_repo_path.exists():
                 console.print("[yellow]Git repository does not exist, run setup first[/yellow]")
                 return False
 
-            self.git_repo = Repo(self.git_repo_path)
-            origin = self.git_repo.remotes.origin
+            self.configs_repo = Repo(self.configs_repo_path)
+            origin = self.configs_repo.remotes.origin
 
             console.print("Pulling latest changes from remote repository...")
             origin.pull()
@@ -374,19 +342,19 @@ function showproxy {{
     def sync_config(self, shell_name: str) -> bool:
         """Sync configuration from git repository"""
         try:
-            if not self.git_repo_path.exists():
+            if not self.configs_repo_path.exists():
                 console.print("[yellow]Git repository does not exist, run setup first[/yellow]")
                 return False
 
-            self.git_repo = Repo(self.git_repo_path)
+            self.configs_repo = Repo(self.configs_repo_path)
             repo_config_path = self.get_repo_config_path(shell_name)
 
             if not repo_config_path.exists():
                 console.print(f"[yellow]No configuration found in repository for {shell_name}[/yellow]")
                 return False
 
-            config_file = self.get_config_file_path(shell_name)
-            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file = self.get_shell_config_file(shell_name)
+            self.ensure_shell_config_dir(shell_name)
 
             # Copy from repository to local
             import shutil
@@ -403,7 +371,7 @@ function showproxy {{
         console.print("[bold]Available configurations:[/bold]")
 
         for shell_name in self.SUPPORTED_SHELLS:
-            config_file = self.get_config_file_path(shell_name)
+            config_file = self.get_shell_config_file(shell_name)
             repo_config_path = self.get_repo_config_path(shell_name)
 
             status = []
@@ -419,13 +387,13 @@ function showproxy {{
 
     def initialize_config_if_needed(self, shell_name: str) -> bool:
         """Initialize configuration file if it doesn't exist"""
-        config_file = self.get_config_file_path(shell_name)
+        config_file = self.get_shell_config_file(shell_name)
 
         if config_file.exists():
             return True
 
         try:
-            config_file.parent.mkdir(parents=True, exist_ok=True)
+            self.ensure_shell_config_dir(shell_name)
             content = self.create_default_config(shell_name)
 
             with open(config_file, "w", encoding="utf-8") as f:
@@ -457,7 +425,7 @@ function showproxy {{
             if not self.initialize_config_if_needed(shell_name):
                 return False
 
-            config_file = self.get_config_file_path(shell_name)
+            config_file = self.get_shell_config_file(shell_name)
             source_cmd = shell_info["source_cmd"]
 
             # Create rc file if it doesn't exist
@@ -505,7 +473,7 @@ function showproxy {{
                 console.print(f"[yellow]RC file {rc_file} does not exist[/yellow]")
                 return True
 
-            config_file = self.get_config_file_path(shell_name)
+            config_file = self.get_shell_config_file(shell_name)
             source_cmd = shell_info["source_cmd"]
             source_line = f"{source_cmd} {config_file}"
 
@@ -554,7 +522,7 @@ function showproxy {{
             if not rc_file.exists():
                 return False
 
-            config_file = self.get_config_file_path(shell_name)
+            config_file = self.get_shell_config_file(shell_name)
             source_cmd = shell_info["source_cmd"]
             source_line = f"{source_cmd} {config_file}"
 
@@ -566,35 +534,8 @@ function showproxy {{
         except Exception:
             return False
 
-
-@okit_tool("shellconfig", "Shell configuration management tool")
-class ShellConfig(BaseTool):
-    """Shell 配置管理工具"""
-
-    def __init__(self, tool_name: str, description: str = ""):
-        super().__init__(tool_name, description)
-
-    def _get_cli_help(self) -> str:
-        """自定义 CLI 帮助信息"""
-        return """
-Shell Config Tool - Manage shell configurations across multiple shells.
-
-This tool provides comprehensive shell configuration management:
-• Support for bash, zsh, cmd, and PowerShell
-• Git-based configuration synchronization
-• Automatic rc file management
-• Configuration validation and status checking
-• Cross-platform compatibility
-
-Use 'shellconfig --help' to see available commands.
-        """.strip()
-
-    def _get_cli_short_help(self) -> str:
-        """自定义 CLI 简短帮助信息"""
-        return "Shell configuration management tool"
-
     def _add_cli_commands(self, cli_group: click.Group) -> None:
-        """添加工具特定的 CLI 命令"""
+        """Add tool-specific CLI commands"""
 
         @cli_group.command()
         @click.argument("action", type=click.Choice(["get", "set", "list", "setup"]))
@@ -607,14 +548,12 @@ Use 'shellconfig --help' to see available commands.
             """Manage tool configuration (similar to git config)"""
             try:
                 self.logger.info(f"Executing config command, action: {action}, key: {key}")
-                
-                manager = ShellConfigManager()
 
                 if action == "get":
                     if not key:
                         console.print("[red]Error: key is required for 'get' action[/red]")
                         return
-                    result = manager.get_tool_config_value(key)
+                    result = self.get_config_value(key)
                     if result is not None:
                         console.print(result)
                     else:
@@ -626,23 +565,39 @@ Use 'shellconfig --help' to see available commands.
                             "[red]Error: both key and value are required for 'set' action[/red]"
                         )
                         return
-                    if manager.set_tool_config(key, value):
+                    if self.set_config_value(key, value):
                         console.print(f"[green]Set {key} = {value}[/green]")
                     else:
                         console.print(f"[red]Failed to set {key}[/red]")
 
                 elif action == "list":
-                    manager.list_tool_config()
+                    # List all config and display
+                    config_data = self.load_config()
+
+                    if not config_data:
+                        console.print("[yellow]No configuration parameters set[/yellow]")
+                        return
+
+                    from rich.table import Table
+
+                    table = Table(title="Tool Configuration")
+                    table.add_column("Parameter", style="cyan")
+                    table.add_column("Value", style="green")
+
+                    for key, value in config_data.items():
+                        table.add_row(key, str(value))
+
+                    console.print(table)
 
                 elif action == "setup":
                     # Setup git repository (replaces old setup_git command)
                     if repo_url:
-                        manager.setup_git_repo(repo_url)
+                        self.setup_git_repo(repo_url)
                     else:
                         # Try to get repo_url from config
-                        config_repo_url = manager.get_tool_config_value("repo_url")
+                        config_repo_url = self.get_config_value("git.remote_url")
                         if config_repo_url:
-                            manager.setup_git_repo(config_repo_url)
+                            self.setup_git_repo(config_repo_url)
                         else:
                             console.print(
                                 "[yellow]No repo_url provided or configured. Use --repo-url option.[/yellow]"
@@ -661,9 +616,7 @@ Use 'shellconfig --help' to see available commands.
             """Sync configuration from git repository"""
             try:
                 self.logger.info(f"Executing sync command, shell: {shell}")
-                
-                manager = ShellConfigManager()
-                manager.sync_config(shell)
+                self.sync_config(shell)
                 
             except Exception as e:
                 self.logger.error(f"sync command execution failed: {e}")
@@ -675,9 +628,7 @@ Use 'shellconfig --help' to see available commands.
             """Show commands to source the configuration"""
             try:
                 self.logger.info(f"Executing source command, shell: {shell}")
-                
-                manager = ShellConfigManager()
-                manager.show_source_commands(shell)
+                self.show_source_commands(shell)
                 
             except Exception as e:
                 self.logger.error(f"source command execution failed: {e}")
@@ -689,9 +640,7 @@ Use 'shellconfig --help' to see available commands.
             """Enable customconfig by adding source command to rc file"""
             try:
                 self.logger.info(f"Executing enable command, shell: {shell}")
-                
-                manager = ShellConfigManager()
-                manager.enable_config(shell)
+                self.enable_config(shell)
                 
             except Exception as e:
                 self.logger.error(f"enable command execution failed: {e}")
@@ -703,9 +652,7 @@ Use 'shellconfig --help' to see available commands.
             """Disable customconfig by removing source command from rc file"""
             try:
                 self.logger.info(f"Executing disable command, shell: {shell}")
-                
-                manager = ShellConfigManager()
-                manager.disable_config(shell)
+                self.disable_config(shell)
                 
             except Exception as e:
                 self.logger.error(f"disable command execution failed: {e}")
@@ -717,9 +664,7 @@ Use 'shellconfig --help' to see available commands.
             """Check if customconfig is enabled in rc file"""
             try:
                 self.logger.info(f"Executing status command, shell: {shell}")
-                
-                manager = ShellConfigManager()
-                is_enabled = manager.check_config_status(shell)
+                is_enabled = self.check_config_status(shell)
 
                 if is_enabled:
                     console.print(f"[green]✓ Configuration is enabled for {shell}[/green]")
@@ -727,10 +672,10 @@ Use 'shellconfig --help' to see available commands.
                     console.print(f"[red]✗ Configuration is disabled for {shell}[/red]")
 
                 # Show additional info
-                config_file = manager.get_config_file_path(shell)
-                shell_info = manager.get_shell_info(shell)
+                config_file = self.get_shell_config_file(shell)
+                shell_info = self.get_shell_info(shell)
                 rc_file = (
-                    manager.home_dir / shell_info["rc_file"] if shell_info["rc_file"] else None
+                    self.home_dir / shell_info["rc_file"] if shell_info["rc_file"] else None
                 )
 
                 console.print(
@@ -746,7 +691,7 @@ Use 'shellconfig --help' to see available commands.
                 console.print(f"[red]Error: {e}[/red]")
 
     def validate_config(self) -> bool:
-        """验证配置"""
+        """Validate configuration"""
         if not self.tool_name:
             self.logger.warning("Tool name is empty")
             return False
@@ -755,6 +700,6 @@ Use 'shellconfig --help' to see available commands.
         return True
 
     def _cleanup_impl(self) -> None:
-        """自定义清理逻辑"""
+        """Custom cleanup logic"""
         self.logger.info("Executing custom cleanup logic")
         pass

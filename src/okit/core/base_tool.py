@@ -357,19 +357,54 @@ class BaseTool(ABC):
         if not description:
             description = self.description
 
-        @click.group()
-        def cli() -> None:
-            """Tool CLI entry point"""
-            pass
+        use_subcommands = getattr(self, 'use_subcommands', True)
+        
+        if use_subcommands:
+            # Create subcommand group
+            @click.group()
+            def cli() -> None:
+                """Tool CLI entry point"""
+                pass
 
-        # Set CLI help information
-        cli.help = self._get_cli_help()
-        cli.short_help = self._get_cli_short_help()
+            # Set CLI help information
+            cli.help = self._get_cli_help()
+            cli.short_help = self._get_cli_short_help()
 
-        # Add tool-specific commands
-        self._add_cli_commands(cli)
+            # Add tool-specific commands
+            self._add_cli_commands(cli)
 
-        return cli
+            return cli
+        else:
+            # Create direct command (no subcommands)
+            # We need to create a command that can be called directly
+            # We'll create a temporary group to add the command, then return the command itself
+            
+            @click.group()
+            def temp_group() -> None:
+                """Temporary group for command creation"""
+                pass
+
+            # Add tool-specific commands to the temporary group
+            self._add_cli_commands(temp_group)
+            
+            # Get the first command from the temporary group
+            if temp_group.commands:
+                main_command = list(temp_group.commands.values())[0]
+                # Set the command name to the tool name
+                main_command.name = tool_name
+                main_command.help = self._get_cli_help()
+                main_command.short_help = self._get_cli_short_help()
+                return main_command
+            else:
+                # Fallback: create a simple command
+                @click.command()
+                def fallback_command():
+                    """Fallback command"""
+                    pass
+                fallback_command.name = tool_name
+                fallback_command.help = self._get_cli_help()
+                fallback_command.short_help = self._get_cli_short_help()
+                return fallback_command
 
     @abstractmethod
     def _add_cli_commands(self, cli_group: click.Group) -> None:
