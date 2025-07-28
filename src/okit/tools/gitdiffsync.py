@@ -15,7 +15,9 @@ from typing import List, Any
 import re
 import click
 import socket
-from okit.utils.log import logger
+from okit.utils.log import logger, console
+from okit.core.base_tool import BaseTool
+from okit.core.tool_decorator import okit_tool
 
 # paramiko 相关 import 延迟到 cli 和相关函数内部
 
@@ -98,50 +100,34 @@ def verify_directory_structure(
     """Verify if target directories exist on remote server."""
     logger.info(f"Verifying target {remote_root} directories exist...")
     
-    # Check if each remote directory exists
-    for rel_dir in source_dirs:
-        logger.debug(f"Verifying target directory {rel_dir} exists...")
-        remote_path = os.path.join(remote_root, rel_dir).replace('\\', '/')
-        stdin, stdout, stderr = ssh_client.exec_command(f'test -d {remote_path} && echo "exists"')
-        result = stdout.read().decode().strip()
+    for directory in source_dirs:
+        project_name = os.path.basename(os.path.abspath(directory))
+        target_dir = f"{remote_root}/{project_name}"
         
-        if result != "exists":
-            logger.error(f"Target directory {remote_path} does not exist")
+        try:
+            stdin, stdout, stderr = ssh_client.exec_command(f"test -d '{target_dir}'")
+            if stdout.channel.recv_exit_status() != 0:
+                logger.error(f"Target directory {target_dir} does not exist")
+                return False
+            logger.debug(f"Target directory {target_dir} exists")
+        except Exception as e:
+            logger.error(f"Failed to verify directory {target_dir}: {e}")
             return False
-        logger.debug(f"Target directory {remote_path} exists")
     
     return True
 
 
 def ensure_remote_dir(sftp: Any, remote_directory):
-    """递归创建远程目录（如不存在），并检查创建结果。"""
-    dirs = []
-    while remote_directory not in ('/', ''):
-        dirs.append(remote_directory)
-        remote_directory = os.path.dirname(remote_directory)
-    dirs.reverse()
-    for d in dirs:
+    """Ensure remote directory exists, create if necessary."""
+    try:
+        sftp.stat(remote_directory)
+    except FileNotFoundError:
         try:
-            sftp.stat(d)
-        except FileNotFoundError:
-            try:
-                logger.info(f"Creating remote directory: {d}")
-                sftp.mkdir(d)
-                # 创建后立即检查
-                try:
-                    sftp.stat(d)
-                except Exception as stat_e:
-                    logger.error(f"Directory {d} creation failed to verify: {stat_e}")
-                    raise Exception(f"Remote directory {d} creation failed to verify: {stat_e}")
-            except PermissionError as e:
-                logger.error(f"Permission denied creating remote directory {d}: {str(e)}")
-                raise Exception(f"Permission denied creating remote directory {d}: {str(e)}")
-            except OSError as e:
-                logger.error(f"OS error creating remote directory {d}: {str(e)}")
-                raise Exception(f"OS error creating remote directory {d}: {str(e)}")
-            except Exception as e:
-                logger.error(f"Failed to create remote directory {d}: {str(e)}")
-                raise Exception(f"Failed to create remote directory {d}: {str(e)}")
+            sftp.mkdir(remote_directory)
+            logger.debug(f"Created remote directory: {remote_directory}")
+        except Exception as e:
+            logger.error(f"Failed to create remote directory {remote_directory}: {e}")
+            raise
 
 
 def sync_via_rsync(
@@ -151,26 +137,46 @@ def sync_via_rsync(
     dry_run: bool
 ) -> None:
     # project_name = os.path.basename(os.path.abspath(source_dir))
-    project_name = source_dir
-    logger.info(f"Synchronizing {len(files)} files via rsync...")
-    for file in files:
-        source_path = os.path.join(source_dir, file)
-        # 先处理 file 路径
-        file_unix = file.replace('\\', '/')
-        target_path = f"{target}/{project_name}/{file_unix}"
-        logger.info(f"Syncing file: {source_path} -> {target_path}")
-        cmd = ['rsync', '-avz']
-        if dry_run:
-            cmd.append('--dry-run')
-            logger.info("Dry run mode enabled")
-        cmd.extend([source_path, target_path])
-    logger.debug(f"Running rsync command: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        logger.error(f"Rsync failed: {result.stderr}")
-        raise SyncError(f"Rsync failed: {result.stderr}")
-        logger.info(f"Rsync completed for {file}")
-        logger.debug(result.stdout)
+    logger.info(f"Syncing {len(files)} files via rsync to {target}")
+    
+    if not files:
+        logger.info("No files to sync")
+        return
+    
+    # Create file list for rsync
+    file_list = "\n".join(files)
+    
+    cmd = [
+        'rsync',
+        '-avz',
+        '--files-from=-',
+        '--relative',
+        source_dir + '/',
+        target
+    ]
+    
+    if dry_run:
+        cmd.insert(1, '--dry-run')
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            input=file_list,
+            text=True,
+            capture_output=True
+        )
+        
+        if result.returncode == 0:
+            logger.info("rsync completed successfully")
+            if dry_run:
+                console.print(result.stdout)
+        else:
+            logger.error(f"rsync failed: {result.stderr}")
+            raise SyncError(f"rsync failed: {result.stderr}")
+            
+    except subprocess.CalledProcessError as e:
+        logger.error(f"rsync command failed: {e}")
+        raise SyncError(f"rsync command failed: {e}")
 
 
 def sync_via_sftp(
@@ -184,46 +190,57 @@ def sync_via_sftp(
     recursive: bool = True
 ) -> None:
     # project_name = os.path.basename(os.path.abspath(source_dir))
-    project_name = source_dir
-    logger.info(f"Synchronizing {len(files)} files via SFTP... (depth {current_depth})")
+    logger.info(f"Syncing {len(files)} files via SFTP to {target_root}")
+    
+    if not files:
+        logger.info("No files to sync")
+        return
+    
     if current_depth > max_depth:
-        logger.error(f"Maximum recursion depth {max_depth} exceeded at {source_dir}")
-        raise SyncError(f"Maximum recursion depth {max_depth} exceeded at {source_dir}")
-    for file in files:
-        source_path = os.path.join(source_dir, file).replace('\\', '/')
-        file_unix = file.replace('\\', '/')
-        target_path = os.path.join(target_root, project_name, file_unix).replace('\\', '/')
-        target_dir = os.path.dirname(target_path)
-        if os.path.isdir(source_path):
-            logger.info(f"Syncing directory: {source_path} -> {target_path}")
-            try:
-                ensure_remote_dir(sftp, target_path)
-                if not dry_run and recursive:
-                    # 获取子目录下所有内容的相对路径列表
-                    sub_files = []
-                    for root, dirs, files_in_dir in os.walk(source_path):
-                        for f in files_in_dir:
-                            local_file = os.path.join(root, f)
-                            rel_file = os.path.relpath(local_file, source_dir).replace('\\', '/')
-                            sub_files.append(rel_file)
-                    if sub_files:
-                        sync_via_sftp(source_dir, sub_files, sftp, target_root, dry_run, max_depth, current_depth + 1, recursive)
-            except Exception as e:
-                logger.error(f"SFTP directory sync failed for {file}: {str(e)}")
-                raise SyncError(f"SFTP directory sync failed for {file}: {str(e)}")
-        else:
-            logger.info(f"Syncing file: {source_path} -> {target_path}")
-            if dry_run:
-                logger.info(f"Would copy {source_path} to {target_path}")
-            else:
+        logger.warning(f"Maximum recursion depth {max_depth} reached")
+        return
+    
+    synced_count = 0
+    failed_count = 0
+    
+    for file_path in files:
+        try:
+            # Get relative path from source directory
+            abs_file_path = os.path.join(source_dir, file_path)
+            if not os.path.exists(abs_file_path):
+                logger.warning(f"File not found: {abs_file_path}")
+                continue
+            
+            # Create target path
+            target_path = f"{target_root}/{file_path}"
+            target_dir = os.path.dirname(target_path)
+            
+            if not dry_run:
+                # Ensure target directory exists
                 try:
                     ensure_remote_dir(sftp, target_dir)
-                    logger.debug(f"Copying {source_path} to {target_path}")
-                    sftp.put(source_path, target_path)
-                    logger.info(f"Successfully copied {file}")
                 except Exception as e:
-                    logger.error(f"SFTP transfer failed for {file}: {str(e)}")
-                    raise SyncError(f"SFTP transfer failed for {file}: {str(e)}")
+                    logger.error(f"Failed to ensure target directory {target_dir}: {e}")
+                    failed_count += 1
+                    continue
+                
+                # Upload file
+                try:
+                    sftp.put(abs_file_path, target_path)
+                    synced_count += 1
+                    logger.debug(f"Uploaded: {file_path}")
+                except Exception as e:
+                    logger.error(f"Failed to upload {file_path}: {e}")
+                    failed_count += 1
+            else:
+                console.print(f"[cyan]Would upload: {file_path} -> {target_path}[/cyan]")
+                synced_count += 1
+                
+        except Exception as e:
+            logger.error(f"Error processing {file_path}: {e}")
+            failed_count += 1
+    
+    logger.info(f"SFTP sync completed: {synced_count} files synced, {failed_count} failed")
 
 
 def fix_target_root_path(target_root: str) -> str:
@@ -235,128 +252,168 @@ def fix_target_root_path(target_root: str) -> str:
     return target_root
 
 
-@click.command()
-@click.option(
-    '-s', '--source-dirs', multiple=True, required=True,
-    help='Source directories to sync (must be Git repositories)'
-)
-@click.option('--host', required=True, help='Target host address')
-@click.option('--port', type=int, default=22, show_default=True, help='SSH port number')
-@click.option('--user', required=True, help='SSH username')
-@click.option('--target-root', required=True, help='Target root directory on remote server')
-@click.option('--dry-run', is_flag=True, help='Show what would be transferred without actual transfer')
-@click.option('--max-depth', type=int, default=5, show_default=True, help='Maximum recursion depth for directory sync')
-@click.option('--recursive/--no-recursive', default=True, show_default=True, help='Enable or disable recursive directory sync')
-def cli(source_dirs, host, port, user, target_root, dry_run, max_depth, recursive):
-    """Synchronize Git project folders to remote Linux server."""
-    import paramiko
-    from paramiko.ssh_exception import AuthenticationException, SSHException
-    target_root = fix_target_root_path(target_root)
+@okit_tool("gitdiffsync", "Git project synchronization tool")
+class GitDiffSync(BaseTool):
+    """Git 项目同步工具"""
 
-    logger.debug(f"Source directories: {source_dirs}")
-    logger.debug(f"Target root: {target_root}")
+    def __init__(self, tool_name: str, description: str = ""):
+        super().__init__(tool_name, description)
 
-    if dry_run:
-        logger.info("Running in dry-run mode")
+    def _get_cli_help(self) -> str:
+        """自定义 CLI 帮助信息"""
+        return """
+Git Diff Sync Tool - Synchronize Git project folders to remote Linux server.
 
-    logger.debug("Verifying Git repositories...")
-    for directory in source_dirs:
-        if not check_git_repo(directory):
-            logger.error(f"Error: {directory} is not a Git repository")
-            sys.exit(1)
-        else:
-            logger.debug(f"Git repository verified: {directory}")
+This tool synchronizes changed files from Git repositories to remote servers:
+• Detects changed files in Git repositories
+• Supports both rsync and SFTP transfer methods
+• Automatic directory structure verification
+• Dry-run mode for testing
+• Progress reporting and error handling
 
-    logger.debug(f"Setting up SSH connection to {host}...")
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+Use 'gitdiffsync --help' to see available commands.
+        """.strip()
 
-    sftp = None
-    try:
-        try:
-            ssh.connect(
-                host,
-                port=port,
-                username=user
-            )
-            logger.info("SSH connection established successfully")
-        except AuthenticationException as e:
-            logger.error(f"SSH authentication failed: {str(e)}")
-            sys.exit(1)
-        except SSHException as e:
-            logger.error(f"SSH protocol error: {str(e)}")
-            sys.exit(1)
-        except socket.error as e:
-            logger.error(f"SSH network error: {str(e)}")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"SSH connection failed: {str(e)}")
-            sys.exit(1)
+    def _get_cli_short_help(self) -> str:
+        """自定义 CLI 简短帮助信息"""
+        return "Synchronize Git project folders to remote Linux server"
 
-        # Verify directory structure
-        if not verify_directory_structure(source_dirs, target_root, ssh):
-            logger.error("Error: Required target directories do not exist")
-            sys.exit(1)
+    def _add_cli_commands(self, cli_group: click.Group) -> None:
+        """添加工具特定的 CLI 命令"""
 
-        # Determine sync method
-        use_rsync = check_rsync_available()
-        if not use_rsync:
+        @cli_group.command()
+        @click.option(
+            '-s', '--source-dirs', multiple=True, required=True,
+            help='Source directories to sync (must be Git repositories)'
+        )
+        @click.option('--host', required=True, help='Target host address')
+        @click.option('--port', type=int, default=22, show_default=True, help='SSH port number')
+        @click.option('--user', required=True, help='SSH username')
+        @click.option('--target-root', required=True, help='Target root directory on remote server')
+        @click.option('--dry-run', is_flag=True, help='Show what would be transferred without actual transfer')
+        @click.option('--max-depth', type=int, default=5, show_default=True, help='Maximum recursion depth for directory sync')
+        @click.option('--recursive/--no-recursive', default=True, show_default=True, help='Enable or disable recursive directory sync')
+        def sync(source_dirs, host, port, user, target_root, dry_run, max_depth, recursive):
+            """Synchronize Git project folders to remote Linux server."""
             try:
-                sftp = ssh.open_sftp()
-            except SSHException as e:
-                logger.error(f"Failed to open SFTP session: {str(e)}")
-                sys.exit(1)
+                self.logger.info(f"Executing sync command, source_dirs: {source_dirs}, host: {host}")
+                
+                import paramiko
+                from paramiko.ssh_exception import AuthenticationException, SSHException
+                target_root = fix_target_root_path(target_root)
+
+                self.logger.debug(f"Source directories: {source_dirs}")
+                self.logger.debug(f"Target root: {target_root}")
+
+                if dry_run:
+                    self.logger.info("Running in dry-run mode")
+
+                self.logger.debug("Verifying Git repositories...")
+                for directory in source_dirs:
+                    if not check_git_repo(directory):
+                        console.print(f"[red]Error: {directory} is not a Git repository[/red]")
+                        sys.exit(1)
+                    else:
+                        self.logger.debug(f"Git repository verified: {directory}")
+
+                self.logger.debug(f"Setting up SSH connection to {host}...")
+                ssh = paramiko.SSHClient()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+                sftp = None
+                try:
+                    try:
+                        ssh.connect(
+                            host,
+                            port=port,
+                            username=user
+                        )
+                        self.logger.info("SSH connection established successfully")
+                    except AuthenticationException as e:
+                        console.print(f"[red]SSH authentication failed: {str(e)}[/red]")
+                        sys.exit(1)
+                    except SSHException as e:
+                        console.print(f"[red]SSH protocol error: {str(e)}[/red]")
+                        sys.exit(1)
+                    except socket.error as e:
+                        console.print(f"[red]SSH network error: {str(e)}[/red]")
+                        sys.exit(1)
+                    except Exception as e:
+                        console.print(f"[red]SSH connection failed: {str(e)}[/red]")
+                        sys.exit(1)
+
+                    # Verify directory structure
+                    if not verify_directory_structure(source_dirs, target_root, ssh):
+                        console.print("[red]Error: Required target directories do not exist[/red]")
+                        sys.exit(1)
+
+                    # Determine sync method
+                    use_rsync = check_rsync_available()
+                    if not use_rsync:
+                        try:
+                            sftp = ssh.open_sftp()
+                        except SSHException as e:
+                            console.print(f"[red]Failed to open SFTP session: {str(e)}[/red]")
+                            sys.exit(1)
+                        except Exception as e:
+                            console.print(f"[red]Unknown error opening SFTP session: {str(e)}[/red]")
+                            sys.exit(1)
+                    else:
+                        sftp = None
+
+                    # Process each source directory
+                    for directory in source_dirs:
+                        try:
+                            self.logger.info(f"Processing directory: {directory}")
+                            changes = get_git_changes(directory)
+                            if not changes:
+                                self.logger.info(f"No changes in {directory}")
+                                continue
+
+                            self.logger.info(f"Synchronizing {directory}...")
+                            if use_rsync:
+                                sync_via_rsync(
+                                    directory,
+                                    changes,
+                                    f"{user}@{host}:{target_root}",
+                                    dry_run
+                                )
+                            else:
+                                sync_via_sftp(
+                                    directory,
+                                    changes,
+                                    sftp,
+                                    target_root,
+                                    dry_run,
+                                    max_depth,
+                                    1,
+                                    recursive
+                                )
+
+                        except Exception as e:
+                            self.logger.error(f"Error processing {directory}: {e}")
+                            console.print(f"[red]Error processing {directory}: {e}[/red]")
+
+                finally:
+                    if sftp:
+                        sftp.close()
+                    ssh.close()
+                    self.logger.info("SSH connection closed")
+
             except Exception as e:
-                logger.error(f"Unknown error opening SFTP session: {str(e)}")
-                sys.exit(1)
-        else:
-            sftp = None
+                self.logger.error(f"sync command execution failed: {e}")
+                console.print(f"[red]Error: {e}[/red]")
 
-        # Process each source directory
-        for directory in source_dirs:
-            try:
-                logger.info(f"Processing directory: {directory}")
-                changes = get_git_changes(directory)
-                if not changes:
-                    logger.info(f"No changes in {directory}")
-                    continue
+    def validate_config(self) -> bool:
+        """验证配置"""
+        if not self.tool_name:
+            self.logger.warning("Tool name is empty")
+            return False
 
-                logger.info(f"Synchronizing {directory}...")
-                if use_rsync:
-                    sync_via_rsync(
-                        directory,
-                        changes,
-                        f"{user}@{host}:{target_root}",
-                        dry_run
-                    )
-                else:
-                    sync_via_sftp(
-                        directory,
-                        changes,
-                        sftp,
-                        target_root,
-                        dry_run,
-                        max_depth,
-                        1,
-                        recursive
-                    )
+        self.logger.info("Configuration validation passed")
+        return True
 
-            except SyncError as e:
-                logger.error(f"Error synchronizing {directory}: {str(e)}")
-                sys.exit(1)
-
-        logger.info("Synchronization completed successfully")
-
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        sys.exit(1)
-
-    finally:
-        logger.debug("Cleaning up connections...")
-        if sftp:
-            sftp.close()
-        ssh.close()
-        logger.debug("Script finished")
-
-if __name__ == "__main__":
-    cli()
+    def _cleanup_impl(self) -> None:
+        """自定义清理逻辑"""
+        self.logger.info("Executing custom cleanup logic")
+        pass
