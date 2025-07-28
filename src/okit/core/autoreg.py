@@ -32,7 +32,22 @@ def auto_register_commands(
                         from okit.utils.timing import with_timing
 
                         cmd.callback = with_timing(cmd.callback)
-                    parent_group.add_command(cmd, name=modname)
+                    
+                    # 确定命令名称：优先使用工具实例的 tool_name，否则使用模块名
+                    command_name = modname
+                    
+                    # 查找模块中的工具类实例（支持 @okit_tool 装饰器）
+                    for attr_name in dir(module):
+                        attr = getattr(module, attr_name)
+                        
+                        # 检查是否是工具实例（有 tool_name 和 create_cli_group 方法）
+                        if (hasattr(attr, 'tool_name') and 
+                            hasattr(attr, 'create_cli_group') and 
+                            callable(getattr(attr, 'create_cli_group'))):
+                            command_name = attr.tool_name
+                            break
+                    
+                    parent_group.add_command(cmd, name=command_name)
 
             except Exception as e:
                 print(f"Failed to import {full_modname}: {e}", file=sys.stderr)
@@ -47,6 +62,6 @@ def register_all_tools(
         ("okit.tools", os.path.dirname(tools.__file__)),
     ]
     if main_group is None:
-        from .main import main as main_group
+        from okit.cli.main import main as main_group
     for pkg_name, pkg_path in tool_packages:
         auto_register_commands(pkg_name, pkg_path, main_group, debug_enabled)
