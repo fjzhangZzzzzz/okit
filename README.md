@@ -5,6 +5,32 @@
 规范：
 - 按照类型划分工具目录，每个工具的名称是唯一标识符
 
+## 工具列表
+
+okit 包含以下工具：
+
+### 🔧 开发工具
+- **gitdiffsync**: Git 项目同步工具，支持 rsync/SFTP 同步变更文件到远程服务器
+- **clonerepos**: 批量克隆 Git 仓库工具
+- **pedump**: PE 文件（EXE/DLL）头信息和节信息解析工具
+
+### 🔐 安全工具
+- **mobaxterm_keygen**: MobaXterm 许可证密钥生成和管理工具
+  - 自动探测系统中安装的 MobaXterm 信息
+  - 生成 MobaXterm 许可证密钥
+  - 验证许可证密钥有效性
+  - 生成激活码
+  - 管理许可证配置
+
+### ⚙️ 配置工具
+- **shellconfig**: Shell 配置管理工具
+  - 同步 Shell 配置文件
+  - 管理配置状态
+  - 备份和恢复配置
+
+### 📚 示例工具
+- **minimal**: 最小化示例工具，展示工具开发模式
+
 ## 快速开始
 
 ### 安装
@@ -27,6 +53,22 @@ okit completion enable
 
 # 关闭补全
 okit completion disable
+```
+
+### 工具使用示例
+
+```bash
+# Git 项目同步
+okit gitdiffsync --source-dirs /path/to/project --host server.com --user admin --target-root /remote/path
+
+# 生成 MobaXterm 许可证
+okit mobaxterm_keygen generate --username your_username --version 22.0
+
+# 验证许可证
+okit mobaxterm_keygen validate --username your_username --license-key "YOUR-KEY"
+
+# Shell 配置同步
+okit shellconfig sync
 ```
 
 ## 开发
