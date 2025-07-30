@@ -15,12 +15,11 @@ okit 包含以下工具：
 - **pedump**: PE 文件（EXE/DLL）头信息和节信息解析工具
 
 ### 🔐 安全工具
-- **mobaxterm_keygen**: MobaXterm 许可证密钥生成和管理工具
-  - 自动探测系统中安装的 MobaXterm 信息
-  - 生成 MobaXterm 许可证密钥
-  - 验证许可证密钥有效性
-  - 生成激活码
-  - 管理许可证配置
+- **mobaxterm_keygen**: MobaXterm 许可证文件生成工具
+  - 自动探测系统中安装的 MobaXterm 信息（路径和版本）
+  - 生成 Custom.mxtpro 许可证文件
+  - 一键部署许可证文件到安装目录
+  - 基于参考项目：[ryanlycch/MobaXterm-keygen](https://github.com/ryanlycch/MobaXterm-keygen)
 
 ### ⚙️ 配置工具
 - **shellconfig**: Shell 配置管理工具
@@ -61,11 +60,14 @@ okit completion disable
 # Git 项目同步
 okit gitdiffsync --source-dirs /path/to/project --host server.com --user admin --target-root /remote/path
 
-# 生成 MobaXterm 许可证
-okit mobaxterm_keygen generate --username your_username --version 22.0
+# 检测 MobaXterm 安装信息
+okit mobaxterm_keygen detect
 
-# 验证许可证
-okit mobaxterm_keygen validate --username your_username --license-key "YOUR-KEY"
+# 一键部署 MobaXterm 许可证（推荐）
+okit mobaxterm_keygen deploy --username your_username
+
+# 手动生成许可证文件
+okit mobaxterm_keygen generate --username your_username --version 22.0 --output Custom.mxtpro
 
 # Shell 配置同步
 okit shellconfig sync
