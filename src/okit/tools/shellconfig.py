@@ -4,13 +4,13 @@ import json
 import platform
 import click
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from okit.utils.log import output
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
 
-from git import Repo, GitCommandError
-
+if TYPE_CHECKING:
+    from git import Repo, GitCommandError
 
 @okit_tool("shellconfig", "Shell configuration management tool")
 class ShellConfig(BaseTool):
@@ -284,6 +284,9 @@ function showproxy {{
     def setup_git_repo(self, repo_url: Optional[str] = None) -> bool:
         """Setup git repository for configuration management"""
         try:
+            # Lazy import of Git to avoid heavy startup cost
+            from git import Repo, GitCommandError  # noqa: F401
+            
             if not repo_url:
                 output.error("Error: repo_url is required")
                 return False
@@ -333,6 +336,9 @@ function showproxy {{
     def update_repo(self) -> bool:
         """Update git repository"""
         try:
+            # Lazy import of Git to avoid heavy startup cost
+            from git import Repo, GitCommandError
+            
             if not self.configs_repo_path.exists():
                 output.result("[yellow]Git repository does not exist, run setup first[/yellow]")
                 return False
@@ -383,6 +389,9 @@ function showproxy {{
     def sync_config(self, shell_name: str) -> bool:
         """Sync configuration from git repository"""
         try:
+            # Lazy import of Git to avoid heavy startup cost
+            from git import Repo, GitCommandError
+            
             if not self.configs_repo_path.exists():
                 output.result("[yellow]Git repository does not exist, run setup first[/yellow]")
                 return False
