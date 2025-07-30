@@ -8,6 +8,8 @@ from datetime import datetime
 import shutil
 from ruamel.yaml import YAML
 
+from okit.utils.log import logger, console
+
 
 class BaseTool(ABC):
     """
@@ -27,9 +29,6 @@ class BaseTool(ABC):
         self.tool_name = tool_name
         self.description = description
 
-        # Initialize managers
-        self._init_managers()
-
         # Initialize config and data directories
         self._init_config_data()
 
@@ -38,14 +37,6 @@ class BaseTool(ABC):
 
         # YAML instance, created on demand
         self._yaml: Optional[YAML] = None
-
-    def _init_managers(self) -> None:
-        """Initialize various managers"""
-        from okit.utils.log import console
-        from okit.utils.log import logger
-
-        self.logger = logger
-        self.console = console
 
     def _init_config_data(self) -> None:
         """Initialize config and data directories"""
@@ -152,7 +143,7 @@ class BaseTool(ABC):
         default_config = default or {}
 
         if not config_file.exists():
-            self.logger.info(
+            logger.info(
                 f"Config file does not exist, using default config: {config_file}"
             )
             return default_config.copy()
@@ -161,10 +152,10 @@ class BaseTool(ABC):
             with open(config_file, "r", encoding="utf-8") as f:
                 config = self._get_yaml().load(f) or {}
 
-            self.logger.info(f"Successfully loaded config file: {config_file}")
+            logger.info(f"Successfully loaded config file: {config_file}")
             return config
         except Exception as e:
-            self.logger.error(f"Failed to load config file: {config_file}, Error: {e}")
+            logger.error(f"Failed to load config file: {config_file}, Error: {e}")
             return default_config.copy()
 
     def save_config(self, config: Dict[str, Any]) -> bool:
@@ -186,10 +177,10 @@ class BaseTool(ABC):
             with open(config_file, "w", encoding="utf-8") as f:
                 self._get_yaml().dump(config, f)
 
-            self.logger.info(f"Successfully saved config file: {config_file}")
+            logger.info(f"Successfully saved config file: {config_file}")
             return True
         except Exception as e:
-            self.logger.error(f"Failed to save config file: {config_file}, Error: {e}")
+            logger.error(f"Failed to save config file: {config_file}, Error: {e}")
             return False
 
     def get_config_value(self, key: str, default: Any = None) -> Any:
@@ -297,11 +288,11 @@ class BaseTool(ABC):
                     target_path.unlink()
                 else:
                     shutil.rmtree(target_path)
-                self.logger.info(f"Successfully cleaned data: {target_path}")
+                logger.info(f"Successfully cleaned data: {target_path}")
                 return True
             return True
         except Exception as e:
-            self.logger.error(f"Failed to clean data: {target_path}, Error: {e}")
+            logger.error(f"Failed to clean data: {target_path}, Error: {e}")
             return False
 
     def list_data_files(self, *path_parts: str) -> List[Path]:
@@ -322,7 +313,7 @@ class BaseTool(ABC):
         try:
             return list(target_dir.iterdir())
         except Exception as e:
-            self.logger.error(f"Failed to list data files: {target_dir}, Error: {e}")
+            logger.error(f"Failed to list data files: {target_dir}, Error: {e}")
             return []
 
     # ===== Advanced Features =====
@@ -347,10 +338,10 @@ class BaseTool(ABC):
             backup_file = backup_dir / f"config.yaml.{timestamp}.bak"
 
             shutil.copy2(config_file, backup_file)
-            self.logger.info(f"Config file backed up: {backup_file}")
+            logger.info(f"Config file backed up: {backup_file}")
             return backup_file
         except Exception as e:
-            self.logger.error(f"Failed to backup config file: {e}")
+            logger.error(f"Failed to backup config file: {e}")
             return None
 
     def restore_config(self, backup_path: Path) -> bool:
@@ -374,10 +365,10 @@ class BaseTool(ABC):
             config_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(backup_path, config_file)
 
-            self.logger.info(f"Config file restored: {config_file}")
+            logger.info(f"Config file restored: {config_file}")
             return True
         except Exception as e:
-            self.logger.error(f"Failed to restore config file: {e}")
+            logger.error(f"Failed to restore config file: {e}")
             return False
 
     def migrate_config(self, old_version: str, new_version: str) -> bool:
@@ -391,7 +382,7 @@ class BaseTool(ABC):
         Returns:
             bool: Whether migration was successful
         """
-        self.logger.info(f"Config migration: {old_version} -> {new_version}")
+        logger.info(f"Config migration: {old_version} -> {new_version}")
         return True
 
     def create_cli_group(
@@ -490,7 +481,7 @@ class BaseTool(ABC):
 
     def cleanup(self) -> None:
         """Tool cleanup work"""
-        self.logger.info(f"Tool {self.tool_name} is cleaning up")
+        logger.info(f"Tool {self.tool_name} is cleaning up")
         self._cleanup_impl()
 
     def _cleanup_impl(self) -> None:

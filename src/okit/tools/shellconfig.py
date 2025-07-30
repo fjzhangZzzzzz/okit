@@ -759,7 +759,7 @@ function showproxy {{
         ) -> None:
             """Manage tool configuration (similar to git config)"""
             try:
-                self.logger.info(
+                logger.info(
                     f"Executing config command, action: {action}, key: {key}"
                 )
 
@@ -825,7 +825,7 @@ function showproxy {{
                             )
 
             except Exception as e:
-                self.logger.error(f"config command execution failed: {e}")
+                logger.error(f"config command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
@@ -835,11 +835,11 @@ function showproxy {{
         def sync(shell: str) -> None:
             """Sync configuration from git repository"""
             try:
-                self.logger.info(f"Executing sync command, shell: {shell}")
+                logger.info(f"Executing sync command, shell: {shell}")
                 self.sync_config(shell)
 
             except Exception as e:
-                self.logger.error(f"sync command execution failed: {e}")
+                logger.error(f"sync command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
@@ -849,11 +849,11 @@ function showproxy {{
         def source(shell: str) -> None:
             """Show commands to source the configuration"""
             try:
-                self.logger.info(f"Executing source command, shell: {shell}")
+                logger.info(f"Executing source command, shell: {shell}")
                 self.show_source_commands(shell)
 
             except Exception as e:
-                self.logger.error(f"source command execution failed: {e}")
+                logger.error(f"source command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
@@ -863,11 +863,11 @@ function showproxy {{
         def enable(shell: str) -> None:
             """Enable customconfig by adding source command to rc file"""
             try:
-                self.logger.info(f"Executing enable command, shell: {shell}")
+                logger.info(f"Executing enable command, shell: {shell}")
                 self.enable_config(shell)
 
             except Exception as e:
-                self.logger.error(f"enable command execution failed: {e}")
+                logger.error(f"enable command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
@@ -877,11 +877,11 @@ function showproxy {{
         def disable(shell: str) -> None:
             """Disable customconfig by removing source command from rc file"""
             try:
-                self.logger.info(f"Executing disable command, shell: {shell}")
+                logger.info(f"Executing disable command, shell: {shell}")
                 self.disable_config(shell)
 
             except Exception as e:
-                self.logger.error(f"disable command execution failed: {e}")
+                logger.error(f"disable command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
@@ -891,7 +891,7 @@ function showproxy {{
         def status(shell: str) -> None:
             """Check if customconfig is enabled in rc file"""
             try:
-                self.logger.info(f"Executing status command, shell: {shell}")
+                logger.info(f"Executing status command, shell: {shell}")
                 is_enabled = self.check_config_status(shell)
 
                 if is_enabled:
@@ -914,18 +914,18 @@ function showproxy {{
                     )
 
             except Exception as e:
-                self.logger.error(f"status command execution failed: {e}")
+                logger.error(f"status command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
     def validate_config(self) -> bool:
         """Validate configuration"""
         if not self.tool_name:
-            self.logger.warning("Tool name is empty")
+            logger.warning("Tool name is empty")
             return False
 
-        self.logger.info("Configuration validation passed")
+        logger.info("Configuration validation passed")
         return True
 
     def _cleanup_impl(self) -> None:
         """Custom cleanup logic"""
-        self.logger.info("Executing custom cleanup logic")
+        logger.info("Executing custom cleanup logic")

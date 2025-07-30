@@ -28,7 +28,7 @@ def get_repo_name(repo_url: str) -> str:
     return repo_name
 
 
-@okit_tool("clone", "Batch clone git repositories from a list file")
+@okit_tool("clonerepos", "Batch clone git repositories from a list file", use_subcommands=False)
 class CloneRepos(BaseTool):
     """批量克隆 Git 仓库工具"""
 
@@ -40,14 +40,11 @@ class CloneRepos(BaseTool):
         return """
 Clone Repos Tool - Batch clone git repositories from a list file.
 
-This tool reads a list of repository URLs from a file and clones them
-to the current directory. It supports:
-• Reading repository URLs from a text file
-• Optional branch specification
-• Skip existing repositories
-• Progress reporting and summary
+Example:
 
-Use 'clone --help' to see available commands.
+  clonerepos repos.txt                    # Clone from default branch
+  clonerepos repos.txt -b main            # Clone from 'main' branch
+  clonerepos repos.txt --branch develop   # Clone from 'develop' branch
         """.strip()
 
     def _get_cli_short_help(self) -> str:
@@ -57,13 +54,13 @@ Use 'clone --help' to see available commands.
     def _add_cli_commands(self, cli_group: click.Group) -> None:
         """添加工具特定的 CLI 命令"""
 
-        @cli_group.command()
+        @cli_group.command(name="clonerepos")
         @click.argument('repo_list', type=click.Path(exists=True, dir_okay=False))
         @click.option('-b', '--branch', default=None, help='Branch name to clone (optional)')
-        def batch(repo_list: str, branch: str) -> None:
+        def main(repo_list: str, branch: str) -> None:
             """Batch clone git repositories from a list file"""
             try:
-                self.logger.info(f"Executing batch clone command, file: {repo_list}, branch: {branch}")
+                logger.info(f"Executing clonerepos command, file: {repo_list}, branch: {branch}")
                 
                 from git import Repo, GitCommandError
                 repo_list_data = read_repo_list(repo_list)
@@ -75,7 +72,7 @@ Use 'clone --help' to see available commands.
                 self._clone_repositories(repo_list_data, branch=branch)
                 
             except Exception as e:
-                self.logger.error(f"batch clone command execution failed: {e}")
+                logger.error(f"clonerepos command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
     def _clone_repositories(self, repo_list: List[str], branch: str = None) -> None:
@@ -116,14 +113,14 @@ Use 'clone --help' to see available commands.
         """验证配置"""
         # 简单的配置验证逻辑
         if not self.tool_name:
-            self.logger.warning("Tool name is empty")
+            logger.warning("Tool name is empty")
             return False
 
-        self.logger.info("Configuration validation passed")
+        logger.info("Configuration validation passed")
         return True
 
     def _cleanup_impl(self) -> None:
         """自定义清理逻辑"""
-        self.logger.info("Executing custom cleanup logic")
+        logger.info("Executing custom cleanup logic")
         # 工具特定的清理代码可以在这里添加
         pass 

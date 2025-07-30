@@ -350,8 +350,8 @@ Git Diff Sync Tool - Synchronize changed files from Git repositories to remote s
     ) -> None:
         """Execute the sync operation"""
         try:
-            self.logger.info(
-                f"Executing sync command, source_dirs: {source_dirs}, host: {host}"
+            logger.info(
+                f"Executing sync command, source_dirs: {source_dirs}, host: {host}, target_root: {target_root}, dry_run: {dry_run}"
             )
 
             import paramiko  # type: ignore
@@ -359,79 +359,54 @@ Git Diff Sync Tool - Synchronize changed files from Git repositories to remote s
 
             target_root = fix_target_root_path(target_root)
 
-            self.logger.debug(f"Source directories: {source_dirs}")
-            self.logger.debug(f"Target root: {target_root}")
+            logger.debug(f"Source directories: {source_dirs}")
+            logger.debug(f"Target root: {target_root}")
 
             if dry_run:
-                self.logger.info("Running in dry-run mode")
+                logger.info("Running in dry-run mode")
 
-            self.logger.debug("Verifying Git repositories...")
+            logger.debug("Verifying Git repositories...")
             for directory in source_dirs:
                 if not check_git_repo(directory):
-                    console.print(
-                        f"[red]Error: {directory} is not a Git repository[/red]"
-                    )
+                    console.print(f"[red]Error: {directory} is not a Git repository[/red]")
                     sys.exit(1)
                 else:
-                    self.logger.debug(f"Git repository verified: {directory}")
+                    logger.debug(f"Git repository verified: {directory}")
 
-            self.logger.debug(f"Setting up SSH connection to {host}...")
+            logger.debug(f"Setting up SSH connection to {host}...")
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-            sftp = None
-            try:
+            # SSH connection
+            with ssh:
                 try:
                     ssh.connect(host, port=port, username=user)
-                    self.logger.info("SSH connection established successfully")
+                    logger.info("SSH connection established successfully")
                 except AuthenticationException as e:
                     console.print(f"[red]SSH authentication failed: {str(e)}[/red]")
                     sys.exit(1)
                 except SSHException as e:
-                    console.print(f"[red]SSH protocol error: {str(e)}[/red]")
-                    sys.exit(1)
-                except socket.error as e:
-                    console.print(f"[red]SSH network error: {str(e)}[/red]")
-                    sys.exit(1)
-                except Exception as e:
                     console.print(f"[red]SSH connection failed: {str(e)}[/red]")
                     sys.exit(1)
-
-                # Verify directory structure
-                if not verify_directory_structure(source_dirs, target_root, ssh):
-                    console.print(
-                        "[red]Error: Required target directories do not exist[/red]"
-                    )
+                except Exception as e:
+                    console.print(f"[red]Unexpected SSH error: {str(e)}[/red]")
                     sys.exit(1)
 
-                # Determine sync method
-                use_rsync = check_rsync_available()
-                if not use_rsync:
-                    try:
-                        sftp = ssh.open_sftp()
-                    except SSHException as e:
-                        console.print(
-                            f"[red]Failed to open SFTP session: {str(e)}[/red]"
-                        )
-                        sys.exit(1)
-                    except Exception as e:
-                        console.print(
-                            f"[red]Unknown error opening SFTP session: {str(e)}[/red]"
-                        )
-                        sys.exit(1)
-                else:
-                    sftp = None
-
-                # Process each source directory
+                # Perform synchronization
+                console.print(f"[green]Synchronizing {len(source_dirs)} directories...[/green]")
+                
                 for directory in source_dirs:
                     try:
-                        self.logger.info(f"Processing directory: {directory}")
+                        logger.info(f"Processing directory: {directory}")
                         changes = get_git_changes(directory)
                         if not changes:
-                            self.logger.info(f"No changes in {directory}")
+                            logger.info(f"No changes in {directory}")
                             continue
 
-                        self.logger.info(f"Synchronizing {directory}...")
+                        logger.info(f"Synchronizing {directory}...")
+                        
+                        # Determine sync method
+                        use_rsync = check_rsync_available()
                         if use_rsync:
                             sync_via_rsync(
                                 directory,
@@ -440,42 +415,44 @@ Git Diff Sync Tool - Synchronize changed files from Git repositories to remote s
                                 dry_run,
                             )
                         else:
-                            sync_via_sftp(
-                                directory,
-                                changes,
-                                sftp,
-                                target_root,
-                                dry_run,
-                                max_depth,
-                                1,
-                                recursive,
-                            )
+                            try:
+                                sftp = ssh.open_sftp()
+                                sync_via_sftp(
+                                    directory,
+                                    changes,
+                                    sftp,
+                                    target_root,
+                                    dry_run,
+                                    max_depth,
+                                    1,
+                                    recursive,
+                                )
+                                sftp.close()
+                            except Exception as sftp_error:
+                                logger.error(f"SFTP error: {sftp_error}")
+                                console.print(f"[red]SFTP error: {sftp_error}[/red]")
+                                continue
 
                     except Exception as e:
-                        self.logger.error(f"Error processing {directory}: {e}")
+                        logger.error(f"Error processing {directory}: {e}")
                         console.print(f"[red]Error processing {directory}: {e}[/red]")
                         continue
 
-            finally:
-                if sftp:
-                    sftp.close()
-                ssh.close()
-
         except Exception as e:
-            self.logger.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             console.print(f"[red]Unexpected error: {e}[/red]")
             sys.exit(1)
 
     def validate_config(self) -> bool:
         """验证配置"""
         if not self.tool_name:
-            self.logger.warning("Tool name is empty")
+            logger.warning("Tool name is empty")
             return False
 
-        self.logger.info("Configuration validation passed")
+        logger.info("Configuration validation passed")
         return True
 
     def _cleanup_impl(self) -> None:
         """自定义清理逻辑"""
-        self.logger.info("Executing custom cleanup logic")
+        logger.info("Executing custom cleanup logic")
         pass

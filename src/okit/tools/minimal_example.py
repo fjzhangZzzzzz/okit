@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
-from okit.utils.log import console
+from okit.utils.log import logger, console
 
 
 @okit_tool("minimal", "Minimal Example Tool")
@@ -30,7 +30,7 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
         def hello() -> None:
             """Simple greeting command"""
             try:
-                self.logger.info("Executing hello command")
+                logger.info("Executing hello command")
                 console.print("[green]Hello from Minimal Example Tool![/green]")
 
                 # Show tool information
@@ -42,7 +42,7 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                 console.print(f"  Data Path: {tool_info['data_path']}")
 
             except Exception as e:
-                self.logger.error(f"hello command execution failed: {e}")
+                logger.error(f"hello command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
@@ -51,7 +51,7 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
         def config(key: str, value: Optional[str]) -> None:
             """Configuration management demonstration"""
             try:
-                self.logger.info(
+                logger.info(
                     f"Executing config command, key: {key}, value: {value}"
                 )
 
@@ -69,7 +69,7 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                         console.print(f"[red]Failed to set config[/red]")
 
             except Exception as e:
-                self.logger.error(f"config command execution failed: {e}")
+                logger.error(f"config command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
@@ -77,7 +77,7 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
         def data(path: str) -> None:
             """Data directory management demonstration"""
             try:
-                self.logger.info(f"Executing data command, path: {path}")
+                logger.info(f"Executing data command, path: {path}")
 
                 if path:
                     # Ensure data directory exists
@@ -107,14 +107,14 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                         console.print("[yellow]No data files[/yellow]")
 
             except Exception as e:
-                self.logger.error(f"data command execution failed: {e}")
+                logger.error(f"data command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
         def backup() -> None:
             """Configuration backup demonstration"""
             try:
-                self.logger.info("Executing backup command")
+                logger.info("Executing backup command")
 
                 backup_path = self.backup_config()
                 if backup_path:
@@ -127,14 +127,14 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                     )
 
             except Exception as e:
-                self.logger.error(f"backup command execution failed: {e}")
+                logger.error(f"backup command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
         @cli_group.command()
         def info() -> None:
             """Display detailed tool information"""
             try:
-                self.logger.info("Executing info command")
+                logger.info("Executing info command")
 
                 # Tool information
                 tool_info = self.get_tool_info()
@@ -168,19 +168,19 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                     console.print("  Configuration files: None")
 
             except Exception as e:
-                self.logger.error(f"info command execution failed: {e}")
+                logger.error(f"info command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
     def validate_config(self) -> bool:
         """Validate configuration"""
         if not self.tool_name:
-            self.logger.warning("Tool name is empty")
+            logger.warning("Tool name is empty")
             return False
 
-        self.logger.info("Configuration validation passed")
+        logger.info("Configuration validation passed")
         return True
 
     def _cleanup_impl(self) -> None:
         """Custom cleanup logic"""
-        self.logger.info("Executing custom cleanup logic")
+        logger.info("Executing custom cleanup logic")
         pass
