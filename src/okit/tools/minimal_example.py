@@ -54,14 +54,14 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
 
                 if value is None:
                     # Get configuration value
-                    config_value = self.get_config(key)
+                    config_value = self.get_config_value(key)
                     if config_value is not None:
                         output.result(f"{key}: {config_value}")
                     else:
                         output.warning(f"Configuration key '{key}' not found")
                 else:
                     # Set configuration value
-                    self.set_config(key, value)
+                    self.set_config_value(key, value)
                     output.success(f"Set {key} = {value}")
 
             except Exception as e:
@@ -75,9 +75,9 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
 
                 # Show tool status
                 output.info("Tool Status:")
-                
+
                 # Get all configuration
-                config_data = self.get_all_config()
+                config_data = self.load_config()
                 if config_data:
                     output.info("Configuration:")
                     for key, value in config_data.items():
@@ -88,16 +88,16 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                 # Check if tool is properly initialized
                 config_path = self.get_config_path()
                 data_path = self.get_data_path()
-                
+
                 output.info("Paths:")
                 output.result(f"  Config: {config_path}")
                 output.result(f"  Data: {data_path}")
-                
+
                 if config_path.exists():
                     output.success(f"✓ Config directory exists")
                 else:
                     output.warning(f"⚠ Config directory does not exist")
-                    
+
                 if data_path.exists():
                     output.success(f"✓ Data directory exists")
                 else:
@@ -112,18 +112,21 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
         def test(count: int, with_progress: bool) -> None:
             """Test different output types"""
             try:
-                output.debug(f"Executing test command, count: {count}, with_progress: {with_progress}")
-                
+                output.debug(
+                    f"Executing test command, count: {count}, with_progress: {with_progress}"
+                )
+
                 output.info(f"Running test with {count} iterations")
-                
+
                 for i in range(count):
                     if with_progress:
                         output.progress(f"Processing item {i+1}/{count}")
-                    
+
                     # Simulate some work
                     import time
+
                     time.sleep(0.1)
-                    
+
                     # Test different output levels
                     if i % 5 == 0:
                         output.success(f"Completed item {i+1}")
@@ -131,7 +134,7 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                         output.warning(f"Warning for item {i+1}")
                     else:
                         output.debug(f"Processed item {i+1}", category="processing")
-                
+
                 output.success("Test completed successfully!")
                 output.result(f"Total items processed: {count}")
 

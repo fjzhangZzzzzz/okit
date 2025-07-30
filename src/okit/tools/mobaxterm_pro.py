@@ -25,6 +25,7 @@ from okit.core.tool_decorator import okit_tool
 
 class KeygenError(Exception):
     """Custom exception for keygen related errors."""
+
     pass
 
 
@@ -81,7 +82,9 @@ class MobaXtermDetector:
             for reg_path in registry_paths:
                 try:
                     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path) as key:
-                        install_location = winreg.QueryValueEx(key, "InstallLocation")[0]
+                        install_location = winreg.QueryValueEx(key, "InstallLocation")[
+                            0
+                        ]
                         display_name = winreg.QueryValueEx(key, "DisplayName")[0]
                         display_version = winreg.QueryValueEx(key, "DisplayVersion")[0]
 
@@ -127,28 +130,30 @@ class MobaXtermDetector:
                 mobaxterm_exe = os.path.join(path_dir, "MobaXterm.exe")
                 if os.path.exists(mobaxterm_exe):
                     version = self._get_file_version(mobaxterm_exe)
-                    
+
                     # Resolve real installation path for package managers
-                    real_install_path = self._resolve_real_install_path(mobaxterm_exe, path_dir)
+                    real_install_path = self._resolve_real_install_path(
+                        mobaxterm_exe, path_dir
+                    )
                     real_exe_path = self._resolve_real_executable_path(mobaxterm_exe)
-                    
+
                     result = {
                         "install_path": real_install_path,
                         "exe_path": mobaxterm_exe,
                         "version": version or "Unknown",
                         "detection_method": "environment",
                     }
-                    
+
                     # Add real executable path if different
                     if real_exe_path and real_exe_path != mobaxterm_exe:
                         result["real_exe_path"] = real_exe_path
-                        
+
                     # Add package manager info if detected
                     if "scoop" in mobaxterm_exe.lower():
                         result["package_manager"] = "scoop"
                     elif "chocolatey" in mobaxterm_exe.lower():
                         result["package_manager"] = "chocolatey"
-                    
+
                     return result
 
             return None
@@ -167,23 +172,28 @@ class MobaXtermDetector:
                 if real_exe:
                     # Return the directory containing the real executable
                     return os.path.dirname(real_exe)
-                    
+
                 # Fallback: construct typical scoop app path
                 shim_dir = os.path.dirname(exe_path)
                 scoop_root = os.path.dirname(shim_dir)
-                
+
                 # Try different possible app directory names
-                for app_dir_name in ["mobaxterm", "MobaXterm", "mobaxterm-home", "mobaxterm-professional"]:
+                for app_dir_name in [
+                    "mobaxterm",
+                    "MobaXterm",
+                    "mobaxterm-home",
+                    "mobaxterm-professional",
+                ]:
                     app_path = os.path.join(scoop_root, "apps", app_dir_name, "current")
                     if os.path.exists(app_path):
                         return app_path
-            
+
             # Handle chocolatey installations
             elif "chocolatey" in exe_path.lower():
                 real_exe = self._resolve_chocolatey_executable(exe_path)
                 if real_exe:
                     return os.path.dirname(real_exe)
-            
+
             # For regular installations, return the detected path
             return detected_path
 
@@ -203,7 +213,7 @@ class MobaXtermDetector:
             real_exe_path = self._resolve_real_executable_path(exe_path)
             if real_exe_path and real_exe_path != exe_path:
                 output.debug(f"Resolved real executable path: {real_exe_path}")
-                
+
                 # Try PowerShell version info on real executable (safe)
                 version = self._get_version_from_powershell(real_exe_path)
                 if version:
@@ -219,7 +229,7 @@ class MobaXtermDetector:
             version = self._get_version_from_command(exe_path)
             if version:
                 return version
-                
+
             # Try command line on real executable if available
             if real_exe_path and real_exe_path != exe_path:
                 version = self._get_version_from_command(real_exe_path)
@@ -242,11 +252,11 @@ class MobaXtermDetector:
                     result = subprocess.run(
                         cmd, capture_output=True, text=True, timeout=10
                     )
-                    
+
                     if result.returncode == 0 and result.stdout.strip():
-                        output = result.stdout.strip()
+                        message = result.stdout.strip()
                         # Extract version from output using regex
-                        version_match = re.search(r'(\d+\.\d+(?:\.\d+)?)', output)
+                        version_match = re.search(r"(\d+\.\d+(?:\.\d+)?)", message)
                         if version_match:
                             return version_match.group(1)
                 except Exception:
@@ -264,15 +274,15 @@ class MobaXtermDetector:
             # Handle scoop installations
             if "scoop" in exe_path.lower() and "shims" in exe_path.lower():
                 return self._resolve_scoop_executable(exe_path)
-            
-            # Handle chocolatey installations  
+
+            # Handle chocolatey installations
             if "chocolatey" in exe_path.lower():
                 return self._resolve_chocolatey_executable(exe_path)
-            
+
             # Handle other symlinks/shortcuts
             if os.path.islink(exe_path):
                 return os.path.realpath(exe_path)
-                
+
             return exe_path
 
         except Exception as e:
@@ -284,31 +294,38 @@ class MobaXtermDetector:
         try:
             # Read shim file to find real executable path
             if os.path.exists(shim_path):
-                with open(shim_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(shim_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
-                    
+
                 # Look for path patterns in shim content
                 path_patterns = [
                     r'"([^"]*MobaXterm[^"]*\.exe)"',
                     r"'([^']*MobaXterm[^']*\.exe)'",
-                    r'(\S+MobaXterm\S*\.exe)',
+                    r"(\S+MobaXterm\S*\.exe)",
                 ]
-                
+
                 for pattern in path_patterns:
                     matches = re.findall(pattern, content, re.IGNORECASE)
                     for match in matches:
                         if os.path.exists(match):
-                            return match
+                            return str(match)
 
             # Try to construct scoop app path from shim path
             # Typical scoop structure: {scoop}/shims/app.exe -> {scoop}/apps/app/current/app.exe
             shim_dir = os.path.dirname(shim_path)
             scoop_root = os.path.dirname(shim_dir)
             app_name = "mobaxterm"
-            
+
             # Try different possible app directory names
-            for app_dir_name in ["mobaxterm", "MobaXterm", "mobaxterm-home", "mobaxterm-professional"]:
-                app_path = os.path.join(scoop_root, "apps", app_dir_name, "current", "MobaXterm.exe")
+            for app_dir_name in [
+                "mobaxterm",
+                "MobaXterm",
+                "mobaxterm-home",
+                "mobaxterm-professional",
+            ]:
+                app_path = os.path.join(
+                    scoop_root, "apps", app_dir_name, "current", "MobaXterm.exe"
+                )
                 if os.path.exists(app_path):
                     return app_path
 
@@ -324,7 +341,7 @@ class MobaXtermDetector:
             # Chocolatey usually installs to Program Files
             # Try to find real installation
             choco_dir = os.path.dirname(exe_path)
-            
+
             # Look for tools directory
             tools_dir = os.path.join(choco_dir, "tools")
             if os.path.exists(tools_dir):
@@ -374,12 +391,12 @@ class MobaXtermDetector:
         try:
             # Look for version patterns in the path
             version_patterns = [
-                r'(?:mobaxterm|MobaXterm)[_\-\s]*v?(\d+\.\d+(?:\.\d+)?)',
-                r'(?:mobaxterm|MobaXterm)[/\\](\d+\.\d+(?:\.\d+)?)',
-                r'(\d+\.\d+(?:\.\d+)?)(?:[/\\]|$)',
+                r"(?:mobaxterm|MobaXterm)[_\-\s]*v?(\d+\.\d+(?:\.\d+)?)",
+                r"(?:mobaxterm|MobaXterm)[/\\](\d+\.\d+(?:\.\d+)?)",
+                r"(\d+\.\d+(?:\.\d+)?)(?:[/\\]|$)",
             ]
-            
-            path_str = exe_path.replace('\\', '/')
+
+            path_str = exe_path.replace("\\", "/")
             for pattern in version_patterns:
                 match = re.search(pattern, path_str, re.IGNORECASE)
                 if match:
@@ -410,10 +427,16 @@ class MobaXtermKeygen:
 
     def __init__(self) -> None:
         # Variant Base64 table from reference project
-        self.VariantBase64Table = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
-        self.VariantBase64Dict = {i: self.VariantBase64Table[i] for i in range(len(self.VariantBase64Table))}
-        self.VariantBase64ReverseDict = {self.VariantBase64Table[i]: i for i in range(len(self.VariantBase64Table))}
-        
+        self.VariantBase64Table = (
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+        )
+        self.VariantBase64Dict = {
+            i: self.VariantBase64Table[i] for i in range(len(self.VariantBase64Table))
+        }
+        self.VariantBase64ReverseDict = {
+            self.VariantBase64Table[i]: i for i in range(len(self.VariantBase64Table))
+        }
+
         # License types from reference project
         self.LicenseType_Professional = 1
         self.LicenseType_Educational = 3
@@ -424,44 +447,56 @@ class MobaXtermKeygen:
         try:
             # Extract major.minor version (consistent with reference project)
             normalized_version = self._normalize_version(version)
-            major_version, minor_version = normalized_version.split('.')
-            major_version = int(major_version)
-            minor_version = int(minor_version)
-            
+            major_str, minor_str = normalized_version.split(".")
+            major_version = int(major_str)
+            minor_version = int(minor_str)
+
             # Generate license using exact reference project logic
             return self._generate_license(
                 self.LicenseType_Professional,
                 1,  # Count
                 username,
                 major_version,
-                minor_version
+                minor_version,
             )
 
         except Exception as e:
             output.error(f"Failed to generate license key: {e}")
             raise KeygenError(f"License key generation failed: {e}")
 
-    def _generate_license(self, license_type: int, count: int, username: str, major_version: int, minor_version: int) -> str:
+    def _generate_license(
+        self,
+        license_type: int,
+        count: int,
+        username: str,
+        major_version: int,
+        minor_version: int,
+    ) -> str:
         """Generate license with exact reference project format"""
         try:
             assert count >= 0
-            
+
             # Exact LicenseString format from reference project
-            license_string = '%d#%s|%d%d#%d#%d3%d6%d#%d#%d#%d#' % (
+            license_string = "%d#%s|%d%d#%d#%d3%d6%d#%d#%d#%d#" % (
                 license_type,
-                username, 
-                major_version, minor_version,
+                username,
+                major_version,
+                minor_version,
                 count,
-                major_version, minor_version, minor_version,
-                0,    # Unknown
-                0,    # No Games flag. 0 means "NoGames = false". But it does not work.
-                0     # No Plugins flag. 0 means "NoPlugins = false". But it does not work.
+                major_version,
+                minor_version,
+                minor_version,
+                0,  # Unknown
+                0,  # No Games flag. 0 means "NoGames = false". But it does not work.
+                0,  # No Plugins flag. 0 means "NoPlugins = false". But it does not work.
             )
-            
+
             # Exact encoding from reference project
             encrypted_bytes = self._encrypt_bytes(0x787, license_string.encode())
-            encoded_license_string = self._variant_base64_encode(encrypted_bytes).decode()
-            
+            encoded_license_string = self._variant_base64_encode(
+                encrypted_bytes
+            ).decode()
+
             return encoded_license_string
 
         except Exception as e:
@@ -472,7 +507,7 @@ class MobaXtermKeygen:
         """EncryptBytes function from reference project"""
         result = bytearray()
         for i in range(len(bs)):
-            result.append(bs[i] ^ ((key >> 8) & 0xff))
+            result.append(bs[i] ^ ((key >> 8) & 0xFF))
             key = result[-1] & key | 0x482D
         return bytes(result)
 
@@ -480,42 +515,42 @@ class MobaXtermKeygen:
         """DecryptBytes function from reference project"""
         result = bytearray()
         for i in range(len(bs)):
-            result.append(bs[i] ^ ((key >> 8) & 0xff))
+            result.append(bs[i] ^ ((key >> 8) & 0xFF))
             key = bs[i] & key | 0x482D
         return bytes(result)
 
     def _variant_base64_encode(self, bs: bytes) -> bytes:
         """VariantBase64Encode function from reference project"""
-        result = b''
+        result = b""
         blocks_count, left_bytes = divmod(len(bs), 3)
 
         for i in range(blocks_count):
-            coding_int = int.from_bytes(bs[3 * i:3 * i + 3], 'little')
-            block = self.VariantBase64Dict[coding_int & 0x3f]
-            block += self.VariantBase64Dict[(coding_int >> 6) & 0x3f]
-            block += self.VariantBase64Dict[(coding_int >> 12) & 0x3f]
-            block += self.VariantBase64Dict[(coding_int >> 18) & 0x3f]
+            coding_int = int.from_bytes(bs[3 * i : 3 * i + 3], "little")
+            block = self.VariantBase64Dict[coding_int & 0x3F]
+            block += self.VariantBase64Dict[(coding_int >> 6) & 0x3F]
+            block += self.VariantBase64Dict[(coding_int >> 12) & 0x3F]
+            block += self.VariantBase64Dict[(coding_int >> 18) & 0x3F]
             result += block.encode()
 
         if left_bytes == 0:
             return result
         elif left_bytes == 1:
-            coding_int = int.from_bytes(bs[3 * blocks_count:], 'little')
-            block = self.VariantBase64Dict[coding_int & 0x3f]
-            block += self.VariantBase64Dict[(coding_int >> 6) & 0x3f]
+            coding_int = int.from_bytes(bs[3 * blocks_count :], "little")
+            block = self.VariantBase64Dict[coding_int & 0x3F]
+            block += self.VariantBase64Dict[(coding_int >> 6) & 0x3F]
             result += block.encode()
             return result
         else:
-            coding_int = int.from_bytes(bs[3 * blocks_count:], 'little')
-            block = self.VariantBase64Dict[coding_int & 0x3f]
-            block += self.VariantBase64Dict[(coding_int >> 6) & 0x3f]
-            block += self.VariantBase64Dict[(coding_int >> 12) & 0x3f]
+            coding_int = int.from_bytes(bs[3 * blocks_count :], "little")
+            block = self.VariantBase64Dict[coding_int & 0x3F]
+            block += self.VariantBase64Dict[(coding_int >> 6) & 0x3F]
+            block += self.VariantBase64Dict[(coding_int >> 12) & 0x3F]
             result += block.encode()
             return result
 
     def _variant_base64_decode(self, s: str) -> bytes:
         """VariantBase64Decode function from reference project"""
-        result = b''
+        result = b""
         blocks_count, left_bytes = divmod(len(s), 4)
 
         for i in range(blocks_count):
@@ -523,23 +558,23 @@ class MobaXtermKeygen:
             block += self.VariantBase64ReverseDict[s[4 * i + 1]] << 6
             block += self.VariantBase64ReverseDict[s[4 * i + 2]] << 12
             block += self.VariantBase64ReverseDict[s[4 * i + 3]] << 18
-            result += block.to_bytes(3, 'little')
+            result += block.to_bytes(3, "little")
 
         if left_bytes == 0:
             return result
         elif left_bytes == 2:
             block = self.VariantBase64ReverseDict[s[4 * blocks_count]]
             block += self.VariantBase64ReverseDict[s[4 * blocks_count + 1]] << 6
-            result += block.to_bytes(1, 'little')
+            result += block.to_bytes(1, "little")
             return result
         elif left_bytes == 3:
             block = self.VariantBase64ReverseDict[s[4 * blocks_count]]
             block += self.VariantBase64ReverseDict[s[4 * blocks_count + 1]] << 6
             block += self.VariantBase64ReverseDict[s[4 * blocks_count + 2]] << 12
-            result += block.to_bytes(2, 'little')
+            result += block.to_bytes(2, "little")
             return result
         else:
-            raise ValueError('Invalid encoding.')
+            raise ValueError("Invalid encoding.")
 
     def _normalize_version(self, version: str) -> str:
         """Normalize version to major.minor format (consistent with reference project)"""
@@ -549,7 +584,7 @@ class MobaXtermKeygen:
             #   "25.2.0.5296" -> "25.2"
             #   "22.0" -> "22.0"
             #   "21.5.1.4321" -> "21.5"
-            version_parts = version.split('.')
+            version_parts = version.split(".")
             if len(version_parts) >= 2:
                 return f"{version_parts[0]}.{version_parts[1]}"
             elif len(version_parts) == 1:
@@ -567,10 +602,10 @@ class MobaXtermKeygen:
         try:
             # Generate encoded license string using exact reference project algorithm
             encoded_license_string = self.generate_license_key(username, version)
-            
+
             # Create zip file with Pro.key containing the encoded license string (exact reference project format)
-            with zipfile.ZipFile(output_path, 'w') as f:
-                f.writestr('Pro.key', data=encoded_license_string)
+            with zipfile.ZipFile(output_path, "w") as f:
+                f.writestr("Pro.key", data=encoded_license_string)
 
             output.info(f"License file created: {output_path}")
             return output_path
@@ -585,7 +620,7 @@ class MobaXtermKeygen:
             # Decode using exact reference project reverse process
             encrypted_bytes = self._variant_base64_decode(encoded_license_string)
             license_bytes = self._decrypt_bytes(0x787, encrypted_bytes)
-            license_string = license_bytes.decode('utf-8')
+            license_string = license_bytes.decode("utf-8")
             return license_string
 
         except Exception as e:
@@ -598,64 +633,66 @@ class MobaXtermKeygen:
             if not os.path.exists(file_path):
                 return False
 
-            with zipfile.ZipFile(file_path, 'r') as zf:
-                if 'Pro.key' not in zf.namelist():
+            with zipfile.ZipFile(file_path, "r") as zf:
+                if "Pro.key" not in zf.namelist():
                     return False
-                
-                pro_key_content = zf.read('Pro.key').decode('utf-8').strip()
-                
+
+                pro_key_content = zf.read("Pro.key").decode("utf-8").strip()
+
                 # Try to decode the license key to verify it's valid
                 decoded_content = self.decode_license_key(pro_key_content)
                 if decoded_content:
                     # Check if decoded content has expected format from reference project
                     # Format: Type#UserName|MajorMinor#Count#Major3Minor6Minor#0#0#0#
-                    return '#' in decoded_content and '|' in decoded_content
-                
+                    return "#" in decoded_content and "|" in decoded_content
+
                 return False
 
         except Exception as e:
             output.debug(f"License file validation failed: {e}")
             return False
 
-    def validate_license_key(self, username: str, license_key: str, version: str) -> bool:
+    def validate_license_key(
+        self, username: str, license_key: str, version: str
+    ) -> bool:
         """Validate license key for specific user and version"""
         try:
             normalized_version = self._normalize_version(version)
-            major_version, minor_version = normalized_version.split('.')
-            
+            major_version, minor_version = normalized_version.split(".")
+
             # Decode the license key
             decoded_content = self.decode_license_key(license_key)
             if not decoded_content:
                 return False
-                
+
             # Parse the decoded content according to reference project format
             # Format: Type#UserName|MajorMinor#Count#Major3Minor6Minor#0#0#0#
-            parts = decoded_content.split('#')
+            parts = decoded_content.split("#")
             if len(parts) < 7:
                 return False
-                
+
             license_type = parts[0]
             username_version = parts[1]
-            
+
             # Extract username and version from UserName|MajorMinor
-            if '|' not in username_version:
+            if "|" not in username_version:
                 return False
-                
-            key_username, version_part = username_version.split('|', 1)
-            
+
+            key_username, version_part = username_version.split("|", 1)
+
             # Verify username matches
             if key_username != username:
                 return False
-                
+
             # Verify version matches (format: MajorMinor, e.g., "252" for version 25.2)
             expected_version_part = f"{major_version}{minor_version}"
             if version_part != expected_version_part:
                 return False
-                
+
             # Verify license type is Professional (1)
             if license_type != "1":
                 return False
-                
+
             return True
 
         except Exception as e:
@@ -668,31 +705,33 @@ class MobaXtermKeygen:
             decoded_content = self.decode_license_key(license_key)
             if not decoded_content:
                 return None
-                
+
             # Parse according to reference project format
             # Format: Type#UserName|MajorMinor#Count#Major3Minor6Minor#0#0#0#
-            parts = decoded_content.split('#')
+            parts = decoded_content.split("#")
             if len(parts) < 7:
                 return None
-                
+
             license_type = parts[0]
             username_version = parts[1]
             count = parts[2]
-            
+
             # Extract username and version
-            if '|' not in username_version:
+            if "|" not in username_version:
                 return None
-                
-            username, version_part = username_version.split('|', 1)
-            
+
+            username, version_part = username_version.split("|", 1)
+
             # Convert license type number to string
             license_type_names = {
                 "1": "Professional",
-                "3": "Educational", 
-                "4": "Personal"
+                "3": "Educational",
+                "4": "Personal",
             }
-            license_type_name = license_type_names.get(license_type, f"Type {license_type}")
-            
+            license_type_name = license_type_names.get(
+                license_type, f"Type {license_type}"
+            )
+
             # Try to extract major/minor version from version_part
             # This is a bit tricky since it's concatenated like "252" for "25.2"
             version_display = version_part  # fallback to raw value
@@ -700,16 +739,16 @@ class MobaXtermKeygen:
                 # Try common patterns
                 if len(version_part) == 3:  # like "252" -> "25.2"
                     version_display = f"{version_part[:-1]}.{version_part[-1]}"
-                elif len(version_part) == 2:  # like "22" -> "22.0" 
+                elif len(version_part) == 2:  # like "22" -> "22.0"
                     version_display = f"{version_part}.0"
-            
+
             return {
                 "username": username,
                 "version": version_display,
                 "license_type": license_type_name,
                 "user_count": count,
                 "license_key": license_key,
-                "decoded_string": decoded_content
+                "decoded_string": decoded_content,
             }
 
         except Exception as e:
@@ -747,27 +786,41 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
         def detect() -> None:
             """Auto-detect MobaXterm installation information (including version)"""
             try:
-                output.result("[cyan]Detecting MobaXterm installation information...[/cyan]")
+                output.result(
+                    "[cyan]Detecting MobaXterm installation information...[/cyan]"
+                )
 
                 installation_info = self.detector.detect_installation()
 
                 if installation_info:
                     output.success(f"✓ MobaXterm installation found")
-                    output.result(f"  Install path: {installation_info['install_path']}")
+                    output.result(
+                        f"  Install path: {installation_info['install_path']}"
+                    )
                     output.result(f"  Version: {installation_info['version']}")
-                    output.result(f"  Detection method: {installation_info['detection_method']}")
+                    output.result(
+                        f"  Detection method: {installation_info['detection_method']}"
+                    )
 
                     if "display_name" in installation_info:
-                        output.result(f"  Display name: {installation_info['display_name']}")
+                        output.result(
+                            f"  Display name: {installation_info['display_name']}"
+                        )
 
                     if "package_manager" in installation_info:
-                        output.result(f"  Package manager: {installation_info['package_manager']}")
+                        output.result(
+                            f"  Package manager: {installation_info['package_manager']}"
+                        )
 
                     if "exe_path" in installation_info:
-                        output.result(f"  Executable file: {installation_info['exe_path']}")
+                        output.result(
+                            f"  Executable file: {installation_info['exe_path']}"
+                        )
 
                     if "real_exe_path" in installation_info:
-                        output.result(f"  Real executable: {installation_info['real_exe_path']}")
+                        output.result(
+                            f"  Real executable: {installation_info['real_exe_path']}"
+                        )
 
                     # Check license file
                     license_path = self.detector.get_license_file_path(
@@ -775,7 +828,9 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
                     )
                     if license_path:
                         output.result(f"  License file: {license_path}")
-                        self._analyze_license_file(license_path, installation_info["version"])
+                        self._analyze_license_file(
+                            license_path, installation_info["version"]
+                        )
                     else:
                         output.result("  License file: Not found")
 
@@ -784,7 +839,9 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
                     output.result("  Please check the following locations:")
                     for path in self.detector.known_paths:
                         output.result(f"    - {path}")
-                    output.result("  Or ensure MobaXterm is properly installed and added to PATH environment variable")
+                    output.result(
+                        "  Or ensure MobaXterm is properly installed and added to PATH environment variable"
+                    )
 
             except Exception as e:
                 output.error(f"Failed to detect MobaXterm: {e}")
@@ -794,37 +851,49 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
         @cli_group.command()
         @click.option("--username", required=True, help="Username for the license")
         @click.option("--version", required=True, help="MobaXterm version (e.g., 22.0)")
-        @click.option("--output", required=True, help="Output file path for Custom.mxtpro")
-        def generate(username: str, version: str, output: str) -> None:
+        @click.option(
+            "--output", required=True, help="Output file path for Custom.mxtpro"
+        )
+        def generate(username: str, version: str, output_path: str) -> None:
             """Generate Custom.mxtpro license file"""
             try:
                 # Ensure output directory exists
-                output_dir = os.path.dirname(os.path.abspath(output))
+                output_dir = os.path.dirname(os.path.abspath(output_path))
                 if not os.path.exists(output_dir):
                     os.makedirs(output_dir, exist_ok=True)
 
                 # Show normalized version for license generation
                 normalized_version = self.keygen._normalize_version(version)
                 if normalized_version != version:
-                    output.info(f"Normalizing version for license generation: {version} -> {normalized_version}")
+                    output.info(
+                        f"Normalizing version for license generation: {version} -> {normalized_version}"
+                    )
 
                 # Generate license file
-                license_file = self.keygen.create_license_file(username, version, output)
-                
+                license_file = self.keygen.create_license_file(
+                    username, version, output_path
+                )
+
                 # Get license key info for display
-                with zipfile.ZipFile(license_file, 'r') as zf:
-                    license_key = zf.read('Pro.key').decode('utf-8').strip()
-                    
+                with zipfile.ZipFile(license_file, "r") as zf:
+                    license_key = zf.read("Pro.key").decode("utf-8").strip()
+
                 license_info = self.keygen.get_license_info(license_key)
-                
+
                 output.success(f"✓ License file generated successfully!")
                 output.result(f"  Username: {username}")
-                output.result(f"  Version: {normalized_version} (from {version})" if normalized_version != version else f"  Version: {version}")
+                output.result(
+                    f"  Version: {normalized_version} (from {version})"
+                    if normalized_version != version
+                    else f"  Version: {version}"
+                )
                 output.result(f"  License Type: Professional")
                 if license_info:
                     output.result(f"  User Count: {license_info['user_count']}")
                 output.result(f"  Output file: {license_file}")
-                output.warning(f"Please copy the file to MobaXterm's installation directory.")
+                output.warning(
+                    f"Please copy the file to MobaXterm's installation directory."
+                )
 
             except Exception as e:
                 output.error(f"Failed to generate license: {e}")
@@ -833,7 +902,9 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
 
         @cli_group.command()
         @click.option("--username", required=True, help="Username for the license")
-        @click.option("--version", help="MobaXterm version (auto-detect if not specified)")
+        @click.option(
+            "--version", help="MobaXterm version (auto-detect if not specified)"
+        )
         def deploy(username: str, version: str) -> None:
             """One-click deploy: auto-detect installation and generate license file"""
             try:
@@ -843,7 +914,9 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
 
                 if not installation_info:
                     output.result("[red]✗ MobaXterm installation not found[/red]")
-                    output.result("Please install MobaXterm first or use 'generate' command instead.")
+                    output.result(
+                        "Please install MobaXterm first or use 'generate' command instead."
+                    )
                     sys.exit(1)
 
                 install_path = installation_info["install_path"]
@@ -861,21 +934,27 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
                 # Show normalized version for license generation
                 normalized_version = self.keygen._normalize_version(version)
                 if normalized_version != version:
-                    output.result(f"  Normalized version for license: {normalized_version}")
+                    output.result(
+                        f"  Normalized version for license: {normalized_version}"
+                    )
 
                 # Generate license file in installation directory
                 license_path = os.path.join(install_path, "Custom.mxtpro")
                 self.keygen.create_license_file(username, version, license_path)
 
                 # Get license key info for display
-                with zipfile.ZipFile(license_path, 'r') as zf:
-                    license_key = zf.read('Pro.key').decode('utf-8').strip()
-                    
+                with zipfile.ZipFile(license_path, "r") as zf:
+                    license_key = zf.read("Pro.key").decode("utf-8").strip()
+
                 license_info = self.keygen.get_license_info(license_key)
 
                 output.success(f"✓ License deployed successfully!")
                 output.result(f"  Username: {username}")
-                output.result(f"  Version: {normalized_version} (from {version})" if normalized_version != version else f"  Version: {version}")
+                output.result(
+                    f"  Version: {normalized_version} (from {version})"
+                    if normalized_version != version
+                    else f"  Version: {version}"
+                )
                 output.result(f"  License Type: Professional")
                 if license_info:
                     output.result(f"  User Count: {license_info['user_count']}")
@@ -888,12 +967,14 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
                 sys.exit(1)
 
         @cli_group.command()
-        @click.option("--license-key", required=True, help="License key to decode and display")
+        @click.option(
+            "--license-key", required=True, help="License key to decode and display"
+        )
         def info(license_key: str) -> None:
             """Display license key information"""
             try:
                 license_info = self.keygen.get_license_info(license_key)
-                
+
                 if license_info:
                     output.success(f"✓ License key information:")
                     output.result(f"  Username: {license_info['username']}")
@@ -913,22 +994,30 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
         @cli_group.command()
         @click.option("--username", required=True, help="Username to validate")
         @click.option("--license-key", required=True, help="License key to validate")
-        @click.option("--version", required=True, help="MobaXterm version to validate against")
+        @click.option(
+            "--version", required=True, help="MobaXterm version to validate against"
+        )
         def validate(username: str, license_key: str, version: str) -> None:
             """Validate license key for specific user and version"""
             try:
-                is_valid = self.keygen.validate_license_key(username, license_key, version)
-                
+                is_valid = self.keygen.validate_license_key(
+                    username, license_key, version
+                )
+
                 if is_valid:
-                    output.success(f"✓ License key is valid for {username} version {version}")
-                    
+                    output.success(
+                        f"✓ License key is valid for {username} version {version}"
+                    )
+
                     # Show license info
                     license_info = self.keygen.get_license_info(license_key)
                     if license_info:
                         output.result(f"  License Type: {license_info['license_type']}")
                         output.result(f"  User Count: {license_info['user_count']}")
                 else:
-                    output.error(f"✗ License key is invalid for {username} version {version}")
+                    output.error(
+                        f"✗ License key is invalid for {username} version {version}"
+                    )
 
             except Exception as e:
                 output.error(f"Failed to validate license: {e}")
@@ -940,74 +1029,104 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
         try:
             # Validate license file format
             is_valid = self.keygen.validate_license_file(license_path)
-            
+
             if not is_valid:
                 output.result("    [red]✗ Invalid or corrupted license file[/red]")
                 return
-            
+
             # Read license content
-            with zipfile.ZipFile(license_path, 'r') as zf:
-                license_key = zf.read('Pro.key').decode('utf-8').strip()
-            
+            with zipfile.ZipFile(license_path, "r") as zf:
+                license_key = zf.read("Pro.key").decode("utf-8").strip()
+
             # Get license information
             license_info = self.keygen.get_license_info(license_key)
-            
+
             if license_info:
                 output.result("    [green]✓ License file is valid[/green]")
                 output.result(f"      Username: {license_info['username']}")
                 output.result(f"      Version: {license_info['version']}")
                 output.result(f"      License Type: {license_info['license_type']}")
                 output.result(f"      User Count: {license_info['user_count']}")
-                
+
                 # Compare versions
-                self._compare_license_version(license_info['version'], detected_version)
-                
+                self._compare_license_version(license_info["version"], detected_version)
+
                 # Show decoded string for debugging - using debug output
                 output.debug(f"      Decoded String: {license_info['decoded_string']}")
-                
+
             else:
                 output.result("    [red]✗ Failed to parse license content[/red]")
-                
+
         except Exception as e:
             output.debug(f"Failed to analyze license file: {e}")
             output.result(f"    [red]✗ Error analyzing license file: {e}[/red]")
 
-    def _compare_license_version(self, license_version: str, detected_version: str) -> None:
+    def _compare_license_version(
+        self, license_version: str, detected_version: str
+    ) -> None:
         """Compare license version with detected MobaXterm version"""
         try:
             # Normalize both versions to major.minor format
             normalized_license_version = self.keygen._normalize_version(license_version)
-            normalized_detected_version = self.keygen._normalize_version(detected_version)
-            
+            normalized_detected_version = self.keygen._normalize_version(
+                detected_version
+            )
+
             if normalized_license_version == normalized_detected_version:
-                output.result(f"      [green]✓ Version matches detected MobaXterm version ({normalized_detected_version})[/green]")
+                output.result(
+                    f"      [green]✓ Version matches detected MobaXterm version ({normalized_detected_version})[/green]"
+                )
             else:
                 output.result(f"      [yellow]⚠ Version mismatch detected![/yellow]")
                 output.result(f"        License version: {normalized_license_version}")
-                output.result(f"        MobaXterm version: {normalized_detected_version}")
-                
+                output.result(
+                    f"        MobaXterm version: {normalized_detected_version}"
+                )
+
                 # Determine if license is older or newer
                 try:
-                    license_parts = normalized_license_version.split('.')
-                    detected_parts = normalized_detected_version.split('.')
-                    license_major, license_minor = int(license_parts[0]), int(license_parts[1])
-                    detected_major, detected_minor = int(detected_parts[0]), int(detected_parts[1])
-                    
-                    if (license_major < detected_major) or (license_major == detected_major and license_minor < detected_minor):
-                        output.result(f"      [yellow]The license is for an older version and may not work properly.[/yellow]")
-                    elif (license_major > detected_major) or (license_major == detected_major and license_minor > detected_minor):
-                        output.result(f"      [yellow]The license is for a newer version than installed.[/yellow]")
+                    license_parts = normalized_license_version.split(".")
+                    detected_parts = normalized_detected_version.split(".")
+                    license_major, license_minor = int(license_parts[0]), int(
+                        license_parts[1]
+                    )
+                    detected_major, detected_minor = int(detected_parts[0]), int(
+                        detected_parts[1]
+                    )
+
+                    if (license_major < detected_major) or (
+                        license_major == detected_major
+                        and license_minor < detected_minor
+                    ):
+                        output.result(
+                            f"      [yellow]The license is for an older version and may not work properly.[/yellow]"
+                        )
+                    elif (license_major > detected_major) or (
+                        license_major == detected_major
+                        and license_minor > detected_minor
+                    ):
+                        output.result(
+                            f"      [yellow]The license is for a newer version than installed.[/yellow]"
+                        )
                     else:
-                        output.result(f"      [yellow]Version mismatch detected.[/yellow]")
-                        
+                        output.result(
+                            f"      [yellow]Version mismatch detected.[/yellow]"
+                        )
+
                 except ValueError:
-                    output.result(f"      [yellow]Could not determine version relationship.[/yellow]")
-                
-                output.result(f"      [yellow]Consider regenerating the license with the current version.[/yellow]")
-                
+                    output.result(
+                        f"      [yellow]Could not determine version relationship.[/yellow]"
+                    )
+
+                output.result(
+                    f"      [yellow]Consider regenerating the license with the current version.[/yellow]"
+                )
+
                 # Provide regeneration suggestion
-                output.result(f"      [cyan]💡 Regenerate license: okit mobaxterm-pro deploy --username <your_username>[/cyan]")
-                
+                output.result(
+                    f"      [cyan]💡 Regenerate license: okit mobaxterm-pro deploy --username <your_username>[/cyan]"
+                )
+
         except Exception as e:
             output.debug(f"Failed to compare versions: {e}")
             output.result(f"      [yellow]⚠ Could not compare versions: {e}[/yellow]")
