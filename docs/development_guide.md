@@ -482,6 +482,274 @@ info = tool.get_tool_info()
 
 **自动化发布无需手动操作，只需管理好分支与 tag，GitHub Actions 会自动完成发布。**
 
+## 性能监控与优化
+
+okit 提供了内置的零侵入性性能监控框架，帮助开发者快速定位CLI冷启动性能瓶颈，优化工具脚本的加载速度。
+
+### 性能监控功能
+
+性能监控框架具有以下特性：
+
+- **零侵入性**：不需要修改任何现有工具代码
+- **精确追踪**：追踪模块导入、装饰器执行、命令注册等各个阶段
+- **智能分析**：自动识别性能瓶颈并提供优化建议
+- **多种输出**：支持控制台和JSON格式输出
+- **依赖分析**：构建模块导入依赖树，帮助理解性能影响
+- **模块化设计**：性能监控逻辑集中在 `okit.utils.perf_monitor` 模块中，主CLI保持简洁
+
+### 启用性能监控
+
+#### 环境变量方式
+
+```bash
+# 基础监控 - 控制台输出
+OKIT_PERF_MONITOR=basic okit --help
+OKIT_PERF_MONITOR=basic okit your_tool --help
+
+# 详细监控 - 详细分析
+OKIT_PERF_MONITOR=detailed okit your_tool command
+
+# JSON格式输出
+OKIT_PERF_MONITOR=json okit your_tool command
+
+# 保存监控结果到文件
+OKIT_PERF_MONITOR=json OKIT_PERF_OUTPUT=perf_report.json okit your_tool command
+```
+
+#### CLI参数方式
+
+```bash
+# 基础监控
+okit --perf-monitor=basic your_tool command
+
+# 详细监控
+okit --perf-monitor=detailed your_tool command  
+
+# JSON输出并保存到文件
+okit --perf-monitor=json --perf-output=report.json your_tool command
+```
+
+### 监控输出格式
+
+#### 控制台输出示例
+
+```
+🚀 OKIT Performance Report
+==================================================
+Total CLI initialization: 825ms ✗
+
+📊 Phase Breakdown:
+   ├─ Module Imports            2ms ( 0.2%) ░░░░░░░░░░░░░░░
+   ├─ Decorator Execution      26ms ( 3.1%) ░░░░░░░░░░░░░░░
+   ├─ Command Registration      1ms ( 0.1%) ░░░░░░░░░░░░░░░
+   ├─ Other                   796ms (96.5%) ██████████████░
+
+🔍 Tool-level Breakdown:
+   1. mobaxterm_pro        345ms (28.0%) [SLOW]
+   2. shellconfig          234ms (19.0%) [MEDIUM]  
+   3. gitdiffsync          123ms (10.0%) [OK]
+   4. pedump                89ms ( 7.2%) [OK]
+
+⚡ Performance Insights:
+   • mobaxterm_pro is slow (345ms) - slow_import
+   • shellconfig has heavy Git operations (89ms decorator time)
+   • 3 tools are below 100ms threshold ✓
+
+💡 Optimization Recommendations:
+   1. Consider lazy loading of cryptography in mobaxterm_pro
+   2. Cache Git repository initialization in shellconfig
+   3. Implement deferred loading for heavy modules
+
+🎯 Target: Reduce to <300ms (current: 825ms, need: -525ms)
+```
+
+#### JSON输出格式
+
+```json
+{
+  "total_time": 0.825,
+  "phases": {
+    "module_imports": 0.002,
+    "decorator_execution": 0.026,
+    "command_registration": 0.001,
+    "other": 0.796
+  },
+  "tools": {
+    "mobaxterm_pro": {
+      "import_time": 0.345,
+      "decorator_time": 0.012,
+      "total_time": 0.357
+    }
+  },
+  "import_times": {
+    "okit.tools.mobaxterm_pro": 0.345,
+    "okit.tools.shellconfig": 0.234
+  },
+  "dependency_tree": {
+    "okit.tools.mobaxterm_pro": ["cryptography", "winreg"]
+  },
+  "bottlenecks": [
+    {
+      "type": "slow_import",
+      "module": "okit.tools.mobaxterm_pro",
+      "time": 0.345,
+      "severity": "high"
+    }
+  ],
+  "recommendations": [
+    "Consider lazy loading of cryptography in mobaxterm_pro"
+  ],
+  "performance_score": 36.4,
+  "target_time": 0.3,
+  "status": "needs_improvement"
+}
+```
+
+### 监控数据解读
+
+#### 时间阶段分析
+
+- **Module Imports**: 模块导入时间，包括所有okit工具的导入
+- **Decorator Execution**: `@okit_tool`装饰器执行时间
+- **Command Registration**: CLI命令注册时间
+- **Other**: 其他操作时间（Python解释器启动、依赖解析等）
+
+#### 性能状态指示
+
+- **FAST** (< 50ms): 性能优秀
+- **OK** (50-100ms): 性能良好
+- **MEDIUM** (100-200ms): 性能一般，可优化
+- **SLOW** (> 200ms): 性能较差，需要优化
+
+#### 性能评分
+
+- **90-100分**: 优秀（≤ 300ms）
+- **70-89分**: 良好（300-600ms）
+- **50-69分**: 一般（600-900ms）
+- **< 50分**: 需要改进（> 900ms）
+
+### 开发过程中的性能监控
+
+#### 新工具开发时
+
+```bash
+# 开发新工具时监控性能影响
+OKIT_PERF_MONITOR=detailed okit your_new_tool --help
+
+# 对比添加新工具前后的性能变化
+OKIT_PERF_MONITOR=json OKIT_PERF_OUTPUT=before.json okit --help
+# 添加新工具后
+OKIT_PERF_MONITOR=json OKIT_PERF_OUTPUT=after.json okit --help
+```
+
+#### 持续性能监控
+
+```bash
+# 在CI/CD中集成性能监控
+OKIT_PERF_MONITOR=json OKIT_PERF_OUTPUT=ci_perf_report.json okit --help
+
+# 定期性能基准测试
+OKIT_PERF_MONITOR=detailed okit --help > weekly_perf_report.txt
+```
+
+### 性能优化策略
+
+#### 1. 延迟导入优化
+
+对于包含重型依赖的工具，使用延迟导入：
+
+```python
+@okit_tool("heavy_tool", "Tool with heavy dependencies")
+class HeavyTool(BaseTool):
+    def _add_cli_commands(self, cli_group):
+        @cli_group.command()
+        def process():
+            # 在实际使用时才导入重型依赖
+            import heavy_library
+            heavy_library.process()
+```
+
+#### 2. 缓存机制
+
+```python
+# 缓存重复计算结果
+@lru_cache(maxsize=1)
+def get_expensive_config():
+    # 昂贵的配置计算
+    return expensive_computation()
+```
+
+#### 3. 条件导入
+
+```python
+# 只在特定条件下导入
+def import_optional_dependency():
+    try:
+        import optional_library
+        return optional_library
+    except ImportError:
+        return None
+```
+
+#### 4. 模块级别优化
+
+- 避免在模块顶层执行重型操作
+- 将重型初始化移到函数内部
+- 使用`__all__`控制导出内容
+
+### 性能监控最佳实践
+
+1. **定期监控**：在开发过程中定期检查性能变化
+2. **基准对比**：建立性能基准，对比新功能的性能影响
+3. **目标导向**：以300ms为目标，持续优化冷启动时间
+4. **数据驱动**：基于监控数据做优化决策，而非猜测
+5. **CI集成**：在持续集成中加入性能监控，防止性能回退
+6. **文档记录**：记录性能优化措施和效果，便于团队协作
+
+### 性能监控架构
+
+性能监控框架采用模块化设计：
+
+- **主要模块**：`src/okit/utils/perf_monitor.py` - 包含所有性能监控核心逻辑
+- **CLI集成**：`src/okit/cli/main.py` - 仅保留最小化的初始化调用
+- **报告生成**：`src/okit/utils/perf_report.py` - 负责格式化输出和分析
+- **时间工具**：`src/okit/utils/timing.py` - 提供通用的计时功能
+
+**设计优势**：
+- CLI主模块保持简洁和高可读性
+- 性能监控逻辑高度内聚，便于维护
+- 支持配置优先级：CLI参数 > 环境变量 > 默认值
+- 自动处理重复输出问题，确保每次运行只输出一次报告
+
+### 常见性能问题及解决方案
+
+#### 问题1：模块导入耗时过长
+
+**现象**: `Module Imports`占比过高（> 10%）
+
+**解决方案**:
+- 使用延迟导入
+- 移除不必要的依赖
+- 优化导入链
+
+#### 问题2：装饰器执行缓慢
+
+**现象**: `Decorator Execution`时间过长
+
+**解决方案**:
+- 简化装饰器逻辑
+- 避免在装饰器中执行重型操作
+- 缓存装饰器计算结果
+
+#### 问题3：整体启动时间过长
+
+**现象**: `Other`时间占比过高（> 90%）
+
+**解决方案**:
+- 检查Python环境配置
+- 减少全局变量初始化
+- 优化模块组织结构
+
 ## 最佳实践
 
 1. **配置默认值**：总是为配置提供合理的默认值
