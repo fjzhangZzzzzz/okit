@@ -4,7 +4,7 @@
 # dependencies = ["cryptography~=41.0", "click~=8.1"]
 # ///
 """
-MobaXterm Keygen Tool - Generate and manage MobaXterm license keys.
+MobaXterm Pro Tool - Generate and manage MobaXterm Professional license.
 
 Based on the reference project: https://github.com/ryanlycch/MobaXterm-keygen
 """
@@ -718,10 +718,10 @@ class MobaXtermKeygen:
 
 
 @okit_tool(
-    "mobaxterm_keygen", "MobaXterm license key generator tool", use_subcommands=True
+    "mobaxterm-pro", "MobaXterm license key generator tool", use_subcommands=True
 )
-class MobaXtermKeygenTool(BaseTool):
-    """MobaXterm key generation tool"""
+class MobaXtermProTool(BaseTool):
+    """MobaXterm Pro license management tool"""
 
     def __init__(self, tool_name: str, description: str = ""):
         super().__init__(tool_name, description)
@@ -731,14 +731,14 @@ class MobaXtermKeygenTool(BaseTool):
     def _get_cli_help(self) -> str:
         """Custom CLI help information"""
         return """
-MobaXterm Keygen Tool - Generate and manage MobaXterm license keys.
+MobaXterm Pro Tool - Generate and manage MobaXterm license keys.
 
 Based on: https://github.com/ryanlycch/MobaXterm-keygen
         """.strip()
 
     def _get_cli_short_help(self) -> str:
         """Custom CLI short help information"""
-        return "Generate and manage MobaXterm license keys"
+        return "Generate and manage MobaXterm Professional license"
 
     def _add_cli_commands(self, cli_group: click.Group) -> None:
         """Add tool-specific CLI commands"""
@@ -1009,7 +1009,7 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
                 console.print(f"      [yellow]Consider regenerating the license with the current version.[/yellow]")
                 
                 # Provide regeneration suggestion
-                console.print(f"      [cyan]💡 Regenerate license: okit mobaxterm_keygen deploy --username <your_username>[/cyan]")
+                console.print(f"      [cyan]💡 Regenerate license: okit mobaxterm-pro deploy --username <your_username>[/cyan]")
                 
         except Exception as e:
             logger.debug(f"Failed to compare versions: {e}")

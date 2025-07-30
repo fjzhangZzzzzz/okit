@@ -1,8 +1,8 @@
-# MobaXterm 许可证文件生成工具使用指南
+# MobaXterm Pro 使用指南
 
 ## 概述
 
-MobaXterm 许可证文件生成工具是一个基于 okit 框架的工具，用于生成 MobaXterm 的 Custom.mxtpro 许可证文件。该工具基于参考项目 [ryanlycch/MobaXterm-keygen](https://github.com/ryanlycch/MobaXterm-keygen)，采用简洁高效的设计理念。
+MobaXterm Pro 是一个基于 okit 框架的专业许可证管理工具，用于生成和管理 MobaXterm Professional 版本的 Custom.mxtpro 许可证文件。该工具基于参考项目 [ryanlycch/MobaXterm-keygen](https://github.com/ryanlycch/MobaXterm-keygen)，采用简洁高效的设计理念。
 
 ## 功能特性
 
@@ -40,7 +40,7 @@ okit --help
 
 ```bash
 # 自动检测安装信息（包含路径和版本）
-okit mobaxterm_keygen detect
+okit mobaxterm-pro detect
 ```
 
 **功能说明：**
@@ -97,17 +97,17 @@ Detecting MobaXterm installation information...
         MobaXterm version: 25.2
       The license is for an older version and may not work properly.
       Consider regenerating the license with the current version.
-      💡 Regenerate license: okit mobaxterm_keygen deploy --username <your_username>
+      💡 Regenerate license: okit mobaxterm-pro deploy --username <your_username>
 ```
 
 ### 2. 一键部署许可证（推荐使用）
 
 ```bash
 # 自动检测并部署到安装目录
-okit mobaxterm_keygen deploy --username your_username
+okit mobaxterm-pro deploy --username your_username
 
 # 指定版本（可选）
-okit mobaxterm_keygen deploy --username your_username --version 22.0
+okit mobaxterm-pro deploy --username your_username --version 22.0
 ```
 
 **功能说明：**
@@ -124,13 +124,13 @@ okit mobaxterm_keygen deploy --username your_username --version 22.0
 
 ```bash
 # 基本用法
-okit mobaxterm_keygen generate --username your_username --version 22.0 --output Custom.mxtpro
+okit mobaxterm-pro generate --username your_username --version 22.0 --output Custom.mxtpro
 
 # 生成到当前目录
-okit mobaxterm_keygen generate --username your_username --version 22.0 --output ./Custom.mxtpro
+okit mobaxterm-pro generate --username your_username --version 22.0 --output ./Custom.mxtpro
 
 # 生成到指定路径
-okit mobaxterm_keygen generate --username your_username --version 22.0 --output /path/to/Custom.mxtpro
+okit mobaxterm-pro generate --username your_username --version 22.0 --output /path/to/Custom.mxtpro
 ```
 
 **参数说明：**
@@ -143,7 +143,7 @@ okit mobaxterm_keygen generate --username your_username --version 22.0 --output 
 ### 示例 1：检测安装信息
 
 ```bash
-$ okit mobaxterm_keygen detect
+$ okit mobaxterm-pro detect
 
 Detecting MobaXterm installation information...
 ✓ MobaXterm installation found
@@ -158,7 +158,7 @@ Detecting MobaXterm installation information...
 ### 示例 2：一键部署许可证
 
 ```bash
-$ okit mobaxterm_keygen deploy --username john_doe
+$ okit mobaxterm-pro deploy --username john_doe
 
 Auto-detecting MobaXterm installation...
 ✓ Found MobaXterm installation
@@ -175,7 +175,7 @@ Please restart MobaXterm to activate the license.
 ### 示例 3：手动生成许可证文件
 
 ```bash
-$ okit mobaxterm_keygen generate --username john_doe --version 22.0 --output Custom.mxtpro
+$ okit mobaxterm-pro generate --username john_doe --version 22.0 --output Custom.mxtpro
 
 ✓ License file generated successfully!
   Username: john_doe
@@ -242,10 +242,10 @@ def generate_license_key(self, username: str, version: str) -> str:
 
 ```bash
 # 1. 检测安装（可选，了解当前状态）
-okit mobaxterm_keygen detect
+okit mobaxterm-pro detect
 
 # 2. 一键部署许可证
-okit mobaxterm_keygen deploy --username your_name
+okit mobaxterm-pro deploy --username your_name
 
 # 3. 重启 MobaXterm 激活许可证
 ```
@@ -254,10 +254,10 @@ okit mobaxterm_keygen deploy --username your_name
 
 ```bash
 # 1. 检测安装信息
-okit mobaxterm_keygen detect
+okit mobaxterm-pro detect
 
 # 2. 生成许可证文件
-okit mobaxterm_keygen generate --username your_name --version 22.0 --output Custom.mxtpro
+okit mobaxterm-pro generate --username your_name --version 22.0 --output Custom.mxtpro
 
 # 3. 手动复制文件到安装目录
 cp Custom.mxtpro "C:\Program Files (x86)\Mobatek\MobaXterm\"
@@ -303,8 +303,8 @@ cp Custom.mxtpro "C:\Program Files (x86)\Mobatek\MobaXterm\"
 使用调试模式获取详细信息：
 
 ```bash
-okit --log-level DEBUG mobaxterm_keygen detect
-okit --log-level DEBUG mobaxterm_keygen deploy --username test
+okit --log-level DEBUG mobaxterm-pro detect
+okit --log-level DEBUG mobaxterm-pro deploy --username test
 ```
 
 ## 版本兼容性
