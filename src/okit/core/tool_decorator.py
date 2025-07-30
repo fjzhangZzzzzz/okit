@@ -1,6 +1,115 @@
 import click
-from typing import Type, Callable
+from typing import Type, Callable, Any, Optional
 from .base_tool import BaseTool
+
+
+class LazyCommand(click.Command):
+    """延迟加载的Command代理类"""
+    
+    def __init__(self, name: str, tool_class: Type[BaseTool], tool_description: str, 
+                 use_subcommands: bool = False, **kwargs):
+        # 初始化基本的Command属性，暂不设置callback
+        super().__init__(name=name, **kwargs)
+        
+        self.tool_class = tool_class
+        self.tool_name = name
+        self.tool_description = tool_description
+        self.use_subcommands = use_subcommands
+        self._tool_instance = None
+        self._real_command = None
+        
+        # 设置基本的help信息，无需实例化工具
+        self.help = tool_description or f"{name} tool"
+        self.short_help = tool_description or f"{name} tool"
+    
+    def _ensure_real_command(self):
+        """确保真正的命令已经创建"""
+        if self._real_command is None:
+            # 创建工具实例
+            self._tool_instance = self.tool_class(self.tool_name, self.tool_description)
+            self._tool_instance.use_subcommands = self.use_subcommands
+            
+            # 创建真正的CLI命令
+            self._real_command = self._tool_instance.create_cli_group(self.tool_name, self.tool_description)
+            
+            # 复制回调函数
+            if hasattr(self._real_command, 'callback') and self._real_command.callback:
+                self.callback = self._real_command.callback
+    
+    def invoke(self, ctx: click.Context) -> Any:
+        """重写invoke方法以支持延迟加载"""
+        self._ensure_real_command()
+        
+        # 如果是真正的命令，直接调用
+        if self._real_command:
+            return self._real_command.invoke(ctx)
+        
+        return super().invoke(ctx)
+    
+    def get_help(self, ctx: click.Context) -> str:
+        """获取帮助信息，优先使用缓存的描述，避免工具实例化"""
+        return self.help or f"{self.tool_name} tool"
+
+
+class LazyGroup(click.Group):
+    """延迟加载的Group代理类"""
+    
+    def __init__(self, name: str, tool_class: Type[BaseTool], tool_description: str, **kwargs):
+        super().__init__(name=name, **kwargs)
+        
+        self.tool_class = tool_class
+        self.tool_name = name
+        self.tool_description = tool_description
+        self._tool_instance = None
+        self._real_group = None
+        self._commands_loaded = False
+        
+        # 设置基本的help信息
+        self.help = tool_description or f"{name} tool"
+        self.short_help = tool_description or f"{name} tool"
+    
+    def _ensure_real_group(self):
+        """确保真正的group已经创建"""
+        if self._real_group is None:
+            self._tool_instance = self.tool_class(self.tool_name, self.tool_description)
+            self._tool_instance.use_subcommands = True
+            self._real_group = self._tool_instance.create_cli_group(self.tool_name, self.tool_description)
+            
+            # 复制callback
+            if hasattr(self._real_group, 'callback') and self._real_group.callback:
+                self.callback = self._real_group.callback
+    
+    def _load_commands(self):
+        """加载所有子命令"""
+        if not self._commands_loaded:
+            self._ensure_real_group()
+            
+            # 复制所有子命令
+            if isinstance(self._real_group, click.Group):
+                for cmd_name, cmd in self._real_group.commands.items():
+                    self.add_command(cmd, name=cmd_name)
+            
+            self._commands_loaded = True
+    
+    def invoke(self, ctx: click.Context) -> Any:
+        """重写invoke方法"""
+        self._ensure_real_group()
+        
+        # 如果有callback，调用它
+        if self.callback:
+            return ctx.invoke(self.callback, **ctx.params)
+        
+        return super().invoke(ctx)
+    
+    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+        """获取子命令时才加载真正的group"""
+        self._load_commands()
+        return super().get_command(ctx, cmd_name)
+    
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        """列出命令时才加载真正的group"""
+        self._load_commands()
+        return super().list_commands(ctx)
 
 
 def okit_tool(
@@ -8,6 +117,8 @@ def okit_tool(
 ) -> Callable[[Type[BaseTool]], Type[BaseTool]]:
     """
     装饰器：将类转换为 okit 工具
+    
+    使用延迟加载机制避免启动时的重型初始化
 
     使用示例：
     @okit_tool("my_tool", "我的工具描述")
@@ -23,9 +134,12 @@ def okit_tool(
         tool_class.description = description
         tool_class.use_subcommands = use_subcommands
         
-        # 创建全局 cli 变量（自动注册机制需要）
-        tool_instance = tool_class(tool_name, description)
-        cli = tool_instance.create_cli_group(tool_name, description)
+        # 创建延迟加载的CLI命令/组，避免立即实例化工具类
+        if use_subcommands:
+            cli = LazyGroup(name=tool_name, tool_class=tool_class, tool_description=description)
+        else:
+            cli = LazyCommand(name=tool_name, tool_class=tool_class, tool_description=description, 
+                             use_subcommands=use_subcommands)
 
         # 将 cli 添加到模块全局变量
         import sys

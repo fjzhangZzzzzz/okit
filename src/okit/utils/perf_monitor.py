@@ -8,13 +8,14 @@ module imports, decorator execution, and CLI registration processes.
 import sys
 import time
 import os
-import json
-import importlib.util
-from types import ModuleType
+# Defer heavy imports to reduce startup cost
+# import json  # Only import when needed
+# import importlib.util  # Only import when needed
+# from types import ModuleType  # Only import when needed
 from typing import Dict, List, Optional, Any, Set, Tuple
 from contextlib import contextmanager
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
+# from pathlib import Path  # Only import when needed
+from dataclasses import dataclass, field  # asdict removed, import when needed
 from collections import defaultdict
 
 
@@ -25,6 +26,8 @@ class PerformanceMetrics:
     phases: Dict[str, float] = field(default_factory=dict)
     tools: Dict[str, Dict[str, float]] = field(default_factory=dict)
     import_times: Dict[str, float] = field(default_factory=dict)
+    external_imports: Dict[str, float] = field(default_factory=dict)  # New: external module imports
+    system_phases: Dict[str, float] = field(default_factory=dict)    # New: system operations breakdown
     dependency_tree: Dict[str, List[str]] = field(default_factory=dict)
     bottlenecks: List[Dict[str, Any]] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
@@ -37,12 +40,18 @@ class ImportTracker:
     
     def __init__(self):
         self.import_times: Dict[str, float] = {}
+        self.external_import_times: Dict[str, float] = {}  # Track heavy external imports
         self.import_stack: List[str] = []
         self.dependency_tree: Dict[str, List[str]] = defaultdict(list)
         self.external_deps: Dict[str, List[str]] = defaultdict(list)
         self.original_import = None
         self.tracking_enabled = False
         self.okit_modules: Set[str] = set()
+        
+        # Optimize: pre-compile the module name check for better performance
+        self._okit_prefixes = ('okit.tools.', 'okit.core.', 'okit.utils.')
+        # Track these heavy external modules specifically
+        self._heavy_external_modules = ('click', 'pathlib', 'typing', 'dataclasses', 'json', 'collections', 'ruamel')
         
     def start_tracking(self):
         """Start tracking imports"""
@@ -66,21 +75,19 @@ class ImportTracker:
         """Track import timing and dependencies"""
         start_time = time.perf_counter()
         
-        # Check if this is an okit module we should track
-        should_track = (
-            name.startswith('okit.tools.') or 
-            name.startswith('okit.core.') or
-            name.startswith('okit.utils.')
-        )
+        # Check if this is an okit module we should track (optimized)
+        should_track_okit = name.startswith(self._okit_prefixes)
+        # Check if this is a heavy external module we should track
+        should_track_external = any(name.startswith(prefix) for prefix in self._heavy_external_modules)
         
-        if should_track:
+        if should_track_okit:
             self.import_stack.append(name)
             
         try:
             module = self.original_import(name, *args, **kwargs)
+            elapsed = time.perf_counter() - start_time
             
-            if should_track:
-                elapsed = time.perf_counter() - start_time
+            if should_track_okit:
                 self.import_times[name] = elapsed
                 self.okit_modules.add(name)
                 
@@ -89,14 +96,17 @@ class ImportTracker:
                     parent = self.import_stack[-2]
                     self.dependency_tree[parent].append(name)
                     
-            elif self.import_stack:  # External dependency
+            elif should_track_external and elapsed > 0.001:  # Only track external imports >1ms
+                self.external_import_times[name] = elapsed
+                    
+            elif self.import_stack:  # Other external dependency
                 parent = self.import_stack[-1] if self.import_stack else "unknown"
                 self.external_deps[parent].append(name)
                 
             return module
             
         finally:
-            if should_track and self.import_stack and self.import_stack[-1] == name:
+            if should_track_okit and self.import_stack and self.import_stack[-1] == name:
                 self.import_stack.pop()
 
 
@@ -321,12 +331,28 @@ class PerformanceMonitor:
             times.get("total", 0.0) 
             for times in self.registration_tracker.registration_times.values()
         )
+        total_external_imports = sum(self.import_tracker.external_import_times.values())
+        
+        # Break down "Other" phase into more specific categories
+        tracked_time = total_import + total_decorator + total_registration + total_external_imports
+        remaining_other = max(0, total_time - tracked_time)
         
         self.metrics.phases = {
             "module_imports": total_import,
             "decorator_execution": total_decorator,
             "command_registration": total_registration,
-            "other": max(0, total_time - total_import - total_decorator - total_registration)
+            "external_imports": total_external_imports,
+            "other": remaining_other
+        }
+        
+        # Store external imports data
+        self.metrics.external_imports = self.import_tracker.external_import_times.copy()
+        
+        # Estimate system operation breakdown (heuristic)
+        self.metrics.system_phases = {
+            "click_framework": min(remaining_other * 0.7, 200),  # Estimate Click takes 70% or max 200ms
+            "python_startup": min(remaining_other * 0.2, 50),   # Python interpreter overhead
+            "filesystem_ops": min(remaining_other * 0.1, 30)    # File system operations
         }
         
         # Analyze performance

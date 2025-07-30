@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import datetime
 import shutil
-from ruamel.yaml import YAML
+# from ruamel.yaml import YAML  # Lazy import to avoid 55ms startup cost
 
 from okit.utils.log import output
 
@@ -111,13 +111,14 @@ class BaseTool(ABC):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def _get_yaml(self) -> YAML:
-        """Get YAML instance, create on demand"""
+    def _get_yaml(self):
+        """Get YAML instance, create on demand with lazy import"""
         if self._yaml is None:
+            # Lazy import to avoid 55ms startup cost
+            from ruamel.yaml import YAML
             self._yaml = YAML()
             self._yaml.preserve_quotes = True
             self._yaml.indent(mapping=2, sequence=4, offset=2)
-        assert self._yaml is not None
         return self._yaml
 
     # ===== Configuration Management Interface =====

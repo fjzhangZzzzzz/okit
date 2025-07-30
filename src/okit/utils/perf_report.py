@@ -86,6 +86,7 @@ class ConsoleReporter:
                 ("Module Imports", metrics.phases.get("module_imports", 0)),
                 ("Decorator Execution", metrics.phases.get("decorator_execution", 0)),
                 ("Command Registration", metrics.phases.get("command_registration", 0)),
+                ("External Imports", metrics.phases.get("external_imports", 0)),
                 ("Other", metrics.phases.get("other", 0))
             ]
             
@@ -95,6 +96,41 @@ class ConsoleReporter:
                     time_str = self._format_time(phase_time)
                     bar = self._create_progress_bar((phase_time/metrics.total_time)*100, 15)
                     lines.append(f"   ├─ {phase_name:<20} {time_str:>8} ({percentage:>5}) {bar}")
+            lines.append("")
+        
+        # External imports breakdown (if significant)
+        if metrics.external_imports:
+            total_external = sum(metrics.external_imports.values())
+            if total_external > 0.01:  # Show if >10ms
+                lines.append(self._colorize("📦 Heavy External Imports:", "bold"))
+                
+                sorted_externals = sorted(
+                    metrics.external_imports.items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )
+                
+                for module, import_time in sorted_externals[:5]:
+                    if import_time > 0.005:  # Show imports >5ms
+                        time_str = self._format_time(import_time)
+                        percentage = self._format_percentage(import_time, metrics.total_time)
+                        lines.append(f"   • {module:<15} {time_str:>8} ({percentage:>5})")
+                lines.append("")
+        
+        # System operations breakdown (estimated)
+        if metrics.system_phases:
+            lines.append(self._colorize("⚙️ System Operations (estimated):", "bold"))
+            system_items = [
+                ("Click Framework", metrics.system_phases.get("click_framework", 0)),
+                ("Python Startup", metrics.system_phases.get("python_startup", 0)),
+                ("Filesystem Ops", metrics.system_phases.get("filesystem_ops", 0))
+            ]
+            
+            for sys_name, sys_time in system_items:
+                if sys_time > 0:
+                    time_str = self._format_time(sys_time)
+                    percentage = self._format_percentage(sys_time, metrics.total_time)
+                    lines.append(f"   • {sys_name:<15} {time_str:>8} ({percentage:>5})")
             lines.append("")
         
         # Tool-level breakdown
