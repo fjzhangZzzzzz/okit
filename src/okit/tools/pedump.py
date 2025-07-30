@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 import click
 
-from okit.utils.log import logger, console
+from okit.utils.log import output
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
 
@@ -42,7 +42,7 @@ class PEParser:
             with open(self.file_path, 'rb') as f:
                 return f.read()
         except Exception as e:
-            logger.error(f"Failed to read file {self.file_path}: {e}")
+            output.error(f"Failed to read file {self.file_path}: {e}")
             raise
 
     def parse(self):
@@ -53,7 +53,7 @@ class PEParser:
 
     def _parse_dos_header(self):
         if len(self.data) < 64 or self.data[:2] != b'MZ':
-            logger.error("Not a valid PE file (missing MZ header)")
+            output.error("Not a valid PE file (missing MZ header)")
             raise PEFormatError("Not a valid PE file (missing MZ header)")
         e_magic = self.data[:2]
         e_lfanew = struct.unpack('<L', self.data[60:64])[0]
@@ -61,16 +61,16 @@ class PEParser:
             "e_magic": e_magic.decode(errors="replace"),
             "e_lfanew": e_lfanew
         }
-        logger.debug(f"DOS Header: {self.dos_header}")
+        output.debug(f"DOS Header: {self.dos_header}")
 
     def _parse_pe_header(self):
         e_lfanew = self.dos_header["e_lfanew"]
         if len(self.data) < e_lfanew + 24:
-            logger.error("File too small for PE header")
+            output.error("File too small for PE header")
             raise PEFormatError("File too small for PE header")
         signature = self.data[e_lfanew:e_lfanew+4]
         if signature != b'PE\x00\x00':
-            logger.error("Not a valid PE file (missing PE signature)")
+            output.error("Not a valid PE file (missing PE signature)")
             raise PEFormatError("Not a valid PE file (missing PE signature)")
         machine, num_sections, timestamp, _, _, opt_header_size, characteristics = struct.unpack(
             "<HHLLLHH", self.data[e_lfanew+4:e_lfanew+24]
@@ -84,7 +84,7 @@ class PEParser:
             "OptionalHeaderSize": opt_header_size,
             "PEHeaderOffset": e_lfanew
         }
-        logger.debug(f"PE Header: {self.pe_header}")
+        output.debug(f"PE Header: {self.pe_header}")
 
     def _parse_optional_header(self):
         e_lfanew = self.dos_header["e_lfanew"]
@@ -111,7 +111,7 @@ class PEParser:
                 "ImageBase": hex(fields[4]),
                 "Subsystem": hex(fields[7])
             }
-        logger.debug(f"Optional Header: {self.optional_header}")
+        output.debug(f"Optional Header: {self.optional_header}")
 
     def _parse_sections(self):
         e_lfanew = self.dos_header["e_lfanew"]
@@ -132,7 +132,7 @@ class PEParser:
                 "PointerToRawData": pointer_to_raw_data,
                 "Characteristics": hex(characteristics)
             })
-        logger.debug(f"Parsed {len(self.sections)} sections")
+        output.debug(f"Parsed {len(self.sections)} sections")
 
     def get_info(self) -> Dict[str, Any]:
         """获取 PE 文件信息"""
@@ -181,18 +181,17 @@ Use 'pedump --help' to see available commands.
         def parse(files: Tuple[Path, ...], format: str) -> None:
             """Parse PE files and display information"""
             try:
-                logger.info(f"Executing parse command, files: {files}, format: {format}")
+                output.debug(f"Executing parse command, files: {files}, format: {format}")
                 
                 if not files:
-                    console.print("[red]No files specified[/red]")
+                    output.error("No files specified")
                     return
                 
                 for file_path in files:
                     self._parse_pe_file(file_path, format)
                     
             except Exception as e:
-                logger.error(f"parse command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
+                output.error(f"parse command execution failed: {e}")
 
     def _parse_pe_file(self, file_path: Path, format: str) -> None:
         """解析单个 PE 文件"""
@@ -203,16 +202,16 @@ Use 'pedump --help' to see available commands.
             
             if format == 'json':
                 import json
-                console.print(json.dumps(info, indent=2))
+                output.result(json.dumps(info, indent=2))
             elif format == 'csv':
                 self._output_csv(info)
             else:
                 self._output_table(info)
                 
         except PEFormatError as e:
-            console.print(f"[red]PE format error for {file_path}: {e}[/red]")
+                            output.error(f"PE format error for {file_path}: {e}")
         except Exception as e:
-            console.print(f"[red]Error parsing {file_path}: {e}[/red]")
+                            output.error(f"Error parsing {file_path}: {e}")
 
     def _output_table(self, info: Dict[str, Any]) -> None:
         """以表格形式输出信息"""
@@ -230,7 +229,7 @@ Use 'pedump --help' to see available commands.
         file_table.add_row("Image Base", info['optional_header']['ImageBase'])
         file_table.add_row("Subsystem", info['optional_header']['Subsystem'])
         
-        console.print(file_table)
+        output.result(file_table)
         
         # 节信息表格
         if info['sections']:
@@ -248,7 +247,7 @@ Use 'pedump --help' to see available commands.
                     str(section['SizeOfRawData'])
                 )
             
-            console.print(section_table)
+            output.result(section_table)
 
     def _output_csv(self, info: Dict[str, Any]) -> None:
         """以 CSV 形式输出信息"""
@@ -278,18 +277,11 @@ Use 'pedump --help' to see available commands.
                 section['SizeOfRawData']
             ])
         
-        console.print(output.getvalue())
+        output.result(output.getvalue())
 
-    def validate_config(self) -> bool:
-        """验证配置"""
-        if not self.tool_name:
-            logger.warning("Tool name is empty")
-            return False
 
-        logger.info("Configuration validation passed")
-        return True
 
     def _cleanup_impl(self) -> None:
         """自定义清理逻辑"""
-        logger.info("Executing custom cleanup logic")
+        output.debug("Executing custom cleanup logic")
         pass

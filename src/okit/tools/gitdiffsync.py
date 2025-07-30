@@ -15,7 +15,7 @@ from typing import List, Any
 import re
 import click
 import socket
-from okit.utils.log import logger, console
+from okit.utils.log import output
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
 
@@ -31,32 +31,32 @@ class SyncError(Exception):
 def check_git_repo(directory: str) -> bool:
     """Check if directory is a Git repository using gitpython."""
     if not os.path.isdir(directory):
-        logger.error(f"Directory does not exist: {directory}")
+        output.error(f"Directory does not exist: {directory}")
         sys.exit(1)
-    logger.info(f"Checking if {directory} is a Git repository...")
+    output.info(f"Checking if {directory} is a Git repository...")
     try:
         from git import Repo, InvalidGitRepositoryError
 
         repo = Repo(directory)
         is_repo = not repo.bare
         if is_repo:
-            logger.debug(f"{directory} is a valid Git repository")
+            output.debug(f"{directory} is a valid Git repository")
         else:
-            logger.warning(
+            output.warning(
                 f"{directory} is not a valid Git repository (bare repository)"
             )
         return is_repo
     except InvalidGitRepositoryError:
-        logger.warning(f"{directory} is not a Git repository")
+        output.warning(f"{directory} is not a Git repository")
         return False
     except Exception as e:
-        logger.error(f"Failed to check Git repository status for {directory}: {e}")
+        output.error(f"Failed to check Git repository status for {directory}: {e}")
         return False
 
 
 def get_git_changes(directory: str) -> List[str]:
     """Get list of changed files in Git repository using gitpython."""
-    logger.info(f"Getting Git changes for {directory}...")
+    output.info(f"Getting Git changes for {directory}...")
     try:
         from git import Repo, GitCommandError
 
@@ -86,26 +86,26 @@ def get_git_changes(directory: str) -> List[str]:
                 seen.add(file_path)
                 unique_changes.append(file_path)
 
-        logger.info(f"Found {len(unique_changes)} changed files in {directory}")
+        output.info(f"Found {len(unique_changes)} changed files in {directory}")
         return unique_changes
 
     except GitCommandError as e:
-        logger.error(f"Failed to get Git status for {directory}: {e}")
+        output.error(f"Failed to get Git status for {directory}: {e}")
         raise SyncError(f"Failed to get Git status for {directory}: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error getting Git changes for {directory}: {e}")
+        output.error(f"Unexpected error getting Git changes for {directory}: {e}")
         raise SyncError(f"Unexpected error getting Git changes for {directory}: {e}")
 
 
 def check_rsync_available() -> bool:
     """Check if rsync is available in the system."""
-    logger.info("Checking if rsync is available...")
+    output.info("Checking if rsync is available...")
     try:
         subprocess.run(["rsync", "--version"], capture_output=True)
-        logger.info("rsync is available")
+        output.info("rsync is available")
         return True
     except FileNotFoundError:
-        logger.info("rsync is not available, will use SFTP instead")
+        output.info("rsync is not available, will use SFTP instead")
         return False
 
 
@@ -113,7 +113,7 @@ def verify_directory_structure(
     source_dirs: List[str], remote_root: str, ssh_client: Any
 ) -> bool:
     """Verify if target directories exist on remote server."""
-    logger.info(f"Verifying target {remote_root} directories exist...")
+    output.info(f"Verifying target {remote_root} directories exist...")
 
     for directory in source_dirs:
         project_name = os.path.basename(os.path.abspath(directory))
@@ -122,11 +122,11 @@ def verify_directory_structure(
         try:
             stdin, stdout, stderr = ssh_client.exec_command(f"test -d '{target_dir}'")
             if stdout.channel.recv_exit_status() != 0:
-                logger.error(f"Target directory {target_dir} does not exist")
+                output.error(f"Target directory {target_dir} does not exist")
                 return False
-            logger.debug(f"Target directory {target_dir} exists")
+            output.debug(f"Target directory {target_dir} exists")
         except Exception as e:
-            logger.error(f"Failed to verify directory {target_dir}: {e}")
+            output.error(f"Failed to verify directory {target_dir}: {e}")
             return False
 
     return True
@@ -139,9 +139,9 @@ def ensure_remote_dir(sftp: Any, remote_directory: str) -> None:
     except FileNotFoundError:
         try:
             sftp.mkdir(remote_directory)
-            logger.debug(f"Created remote directory: {remote_directory}")
+            output.debug(f"Created remote directory: {remote_directory}")
         except Exception as e:
-            logger.error(f"Failed to create remote directory {remote_directory}: {e}")
+            output.error(f"Failed to create remote directory {remote_directory}: {e}")
             raise
 
 
@@ -149,10 +149,10 @@ def sync_via_rsync(
     source_dir: str, files: List[str], target: str, dry_run: bool
 ) -> None:
     # project_name = os.path.basename(os.path.abspath(source_dir))
-    logger.info(f"Syncing {len(files)} files via rsync to {target}")
+    output.info(f"Syncing {len(files)} files via rsync to {target}")
 
     if not files:
-        logger.info("No files to sync")
+        output.info("No files to sync")
         return
 
     # Create file list for rsync
@@ -167,15 +167,15 @@ def sync_via_rsync(
         result = subprocess.run(cmd, input=file_list, text=True, capture_output=True)
 
         if result.returncode == 0:
-            logger.info("rsync completed successfully")
+            output.info("rsync completed successfully")
             if dry_run:
-                console.print(result.stdout)
+                output.result(result.stdout)
         else:
-            logger.error(f"rsync failed: {result.stderr}")
+            output.error(f"rsync failed: {result.stderr}")
             raise SyncError(f"rsync failed: {result.stderr}")
 
     except subprocess.CalledProcessError as e:
-        logger.error(f"rsync command failed: {e}")
+        output.error(f"rsync command failed: {e}")
         raise SyncError(f"rsync command failed: {e}")
 
 
@@ -190,14 +190,14 @@ def sync_via_sftp(
     recursive: bool = True,
 ) -> None:
     # project_name = os.path.basename(os.path.abspath(source_dir))
-    logger.info(f"Syncing {len(files)} files via SFTP to {target_root}")
+    output.info(f"Syncing {len(files)} files via SFTP to {target_root}")
 
     if not files:
-        logger.info("No files to sync")
+        output.info("No files to sync")
         return
 
     if current_depth > max_depth:
-        logger.warning(f"Maximum recursion depth {max_depth} reached")
+        output.warning(f"Maximum recursion depth {max_depth} reached")
         return
 
     synced_count = 0
@@ -208,7 +208,7 @@ def sync_via_sftp(
             # Get relative path from source directory
             abs_file_path = os.path.join(source_dir, file_path)
             if not os.path.exists(abs_file_path):
-                logger.warning(f"File not found: {abs_file_path}")
+                output.warning(f"File not found: {abs_file_path}")
                 continue
 
             # Create target path
@@ -220,7 +220,7 @@ def sync_via_sftp(
                 try:
                     ensure_remote_dir(sftp, target_dir)
                 except Exception as e:
-                    logger.error(f"Failed to ensure target directory {target_dir}: {e}")
+                    output.error(f"Failed to ensure target directory {target_dir}: {e}")
                     failed_count += 1
                     continue
 
@@ -228,21 +228,19 @@ def sync_via_sftp(
                 try:
                     sftp.put(abs_file_path, target_path)
                     synced_count += 1
-                    logger.debug(f"Uploaded: {file_path}")
+                    output.debug(f"Uploaded: {file_path}")
                 except Exception as e:
-                    logger.error(f"Failed to upload {file_path}: {e}")
+                    output.error(f"Failed to upload {file_path}: {e}")
                     failed_count += 1
             else:
-                console.print(
-                    f"[cyan]Would upload: {file_path} -> {target_path}[/cyan]"
-                )
+                output.info(f"Would upload: {file_path} -> {target_path}")
                 synced_count += 1
 
         except Exception as e:
-            logger.error(f"Error processing {file_path}: {e}")
+            output.error(f"Error processing {file_path}: {e}")
             failed_count += 1
 
-    logger.info(
+    output.info(
         f"SFTP sync completed: {synced_count} files synced, {failed_count} failed"
     )
 
@@ -350,7 +348,7 @@ Git Diff Sync Tool - Synchronize changed files from Git repositories to remote s
     ) -> None:
         """Execute the sync operation"""
         try:
-            logger.info(
+            output.info(
                 f"Executing sync command, source_dirs: {source_dirs}, host: {host}, target_root: {target_root}, dry_run: {dry_run}"
             )
 
@@ -359,21 +357,21 @@ Git Diff Sync Tool - Synchronize changed files from Git repositories to remote s
 
             target_root = fix_target_root_path(target_root)
 
-            logger.debug(f"Source directories: {source_dirs}")
-            logger.debug(f"Target root: {target_root}")
+            output.debug(f"Source directories: {source_dirs}")
+            output.debug(f"Target root: {target_root}")
 
             if dry_run:
-                logger.info("Running in dry-run mode")
+                output.info("Running in dry-run mode")
 
-            logger.debug("Verifying Git repositories...")
+            output.debug("Verifying Git repositories...")
             for directory in source_dirs:
                 if not check_git_repo(directory):
-                    console.print(f"[red]Error: {directory} is not a Git repository[/red]")
+                    output.error(f"Error: {directory} is not a Git repository")
                     sys.exit(1)
                 else:
-                    logger.debug(f"Git repository verified: {directory}")
+                    output.debug(f"Git repository verified: {directory}")
 
-            logger.debug(f"Setting up SSH connection to {host}...")
+            output.debug(f"Setting up SSH connection to {host}...")
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -381,29 +379,29 @@ Git Diff Sync Tool - Synchronize changed files from Git repositories to remote s
             with ssh:
                 try:
                     ssh.connect(host, port=port, username=user)
-                    logger.info("SSH connection established successfully")
+                    output.info("SSH connection established successfully")
                 except AuthenticationException as e:
-                    console.print(f"[red]SSH authentication failed: {str(e)}[/red]")
+                    output.error(f"SSH authentication failed: {str(e)}")
                     sys.exit(1)
                 except SSHException as e:
-                    console.print(f"[red]SSH connection failed: {str(e)}[/red]")
+                    output.error(f"SSH connection failed: {str(e)}")
                     sys.exit(1)
                 except Exception as e:
-                    console.print(f"[red]Unexpected SSH error: {str(e)}[/red]")
+                    output.error(f"Unexpected SSH error: {str(e)}")
                     sys.exit(1)
 
                 # Perform synchronization
-                console.print(f"[green]Synchronizing {len(source_dirs)} directories...[/green]")
+                output.success(f"Synchronizing {len(source_dirs)} directories...")
                 
                 for directory in source_dirs:
                     try:
-                        logger.info(f"Processing directory: {directory}")
+                        output.info(f"Processing directory: {directory}")
                         changes = get_git_changes(directory)
                         if not changes:
-                            logger.info(f"No changes in {directory}")
+                            output.info(f"No changes in {directory}")
                             continue
 
-                        logger.info(f"Synchronizing {directory}...")
+                        output.info(f"Synchronizing {directory}...")
                         
                         # Determine sync method
                         use_rsync = check_rsync_available()
@@ -429,30 +427,21 @@ Git Diff Sync Tool - Synchronize changed files from Git repositories to remote s
                                 )
                                 sftp.close()
                             except Exception as sftp_error:
-                                logger.error(f"SFTP error: {sftp_error}")
-                                console.print(f"[red]SFTP error: {sftp_error}[/red]")
+                                output.error(f"SFTP error: {sftp_error}")
+                                output.error(f"SFTP error: {sftp_error}")
                                 continue
 
                     except Exception as e:
-                        logger.error(f"Error processing {directory}: {e}")
-                        console.print(f"[red]Error processing {directory}: {e}[/red]")
+                        output.error(f"Error processing {directory}: {e}")
+                        output.error(f"Error processing {directory}: {e}")
                         continue
 
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            console.print(f"[red]Unexpected error: {e}[/red]")
+            output.error(f"Unexpected error: {e}")
+            output.error(f"Unexpected error: {e}")
             sys.exit(1)
-
-    def validate_config(self) -> bool:
-        """验证配置"""
-        if not self.tool_name:
-            logger.warning("Tool name is empty")
-            return False
-
-        logger.info("Configuration validation passed")
-        return True
 
     def _cleanup_impl(self) -> None:
         """自定义清理逻辑"""
-        logger.info("Executing custom cleanup logic")
+        output.info("Executing custom cleanup logic")
         pass

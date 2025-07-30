@@ -3,7 +3,7 @@ import sys
 import click
 from pathlib import Path
 from typing import List
-from okit.utils.log import logger, console
+from okit.utils.log import output
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
 
@@ -60,20 +60,19 @@ Example:
         def main(repo_list: str, branch: str) -> None:
             """Batch clone git repositories from a list file"""
             try:
-                logger.info(f"Executing clonerepos command, file: {repo_list}, branch: {branch}")
+                output.debug(f"Executing clonerepos command, file: {repo_list}, branch: {branch}")
                 
                 from git import Repo, GitCommandError
                 repo_list_data = read_repo_list(repo_list)
                 
                 if not repo_list_data:
-                    console.print("[red]No valid repository URLs found in the list file.[/red]")
+                    output.error("No valid repository URLs found in the list file")
                     sys.exit(1)
                 
                 self._clone_repositories(repo_list_data, branch=branch)
                 
             except Exception as e:
-                logger.error(f"clonerepos command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
+                output.error(f"clonerepos command execution failed: {e}")
 
     def _clone_repositories(self, repo_list: List[str], branch: str = None) -> None:
         """克隆仓库列表"""
@@ -86,41 +85,32 @@ Example:
         for repo_url in repo_list:
             repo_name = get_repo_name(repo_url)
             if os.path.isdir(repo_name):
-                console.print(f"[yellow]Skip existing repo: {repo_url}[/yellow]")
+                output.warning(f"Skip existing repo: {repo_url}")
                 skip_count += 1
                 continue
                 
-            console.print(f"Cloning: {repo_url}")
+            output.progress(f"Cloning: {repo_url}")
             try:
                 if branch:
                     Repo.clone_from(repo_url, repo_name, branch=branch)
-                    console.print(f"[green]Successfully cloned branch {branch}: {repo_url}[/green]")
+                    output.success(f"Successfully cloned branch {branch}: {repo_url}")
                 else:
                     Repo.clone_from(repo_url, repo_name)
-                    console.print(f"[green]Successfully cloned: {repo_url}[/green]")
+                    output.success(f"Successfully cloned: {repo_url}")
                 success_count += 1
             except GitCommandError as e:
-                console.print(f"[red]Clone failed: {repo_url}\n  Reason: {e}[/red]")
+                output.error(f"Clone failed: {repo_url}\n  Reason: {e}")
                 fail_count += 1
                 
-        console.print("----------------------------------------")
-        console.print(f"[bold]Clone finished! Summary:[/bold]")
-        console.print(f"[green]Success: {success_count}[/green]")
-        console.print(f"[red]Failed: {fail_count}[/red]")
-        console.print(f"[yellow]Skipped: {skip_count}[/yellow]")
+        output.info("Clone finished! Summary:")
+        output.result(f"Success: {success_count}")
+        output.result(f"Failed: {fail_count}")
+        output.result(f"Skipped: {skip_count}")
 
-    def validate_config(self) -> bool:
-        """验证配置"""
-        # 简单的配置验证逻辑
-        if not self.tool_name:
-            logger.warning("Tool name is empty")
-            return False
 
-        logger.info("Configuration validation passed")
-        return True
 
     def _cleanup_impl(self) -> None:
         """自定义清理逻辑"""
-        logger.info("Executing custom cleanup logic")
+        output.debug("Executing custom cleanup logic")
         # 工具特定的清理代码可以在这里添加
         pass 
