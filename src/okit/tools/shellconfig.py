@@ -5,7 +5,7 @@ import platform
 import click
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from okit.utils.log import logger, console
+from okit.utils.log import output
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
 
@@ -270,60 +270,52 @@ function showproxy {{
         config_file = self.get_shell_config_file(shell_name)
 
         if not config_file.exists():
-            console.print(
-                f"[yellow]Configuration file {config_file} does not exist[/yellow]"
-            )
+            output.warning(f"Configuration file {config_file} does not exist")
             return
 
-        console.print(f"[bold]Source commands for {shell_name}:[/bold]")
+        output.result(f"[bold]Source commands for {shell_name}:[/bold]")
         if shell_name in ["bash", "zsh"]:
-            console.print(f"source {config_file}")
+            output.result(f"source {config_file}")
         elif shell_name == "cmd":
-            console.print(f"call {config_file}")
+            output.result(f"call {config_file}")
         elif shell_name == "powershell":
-            console.print(f". {config_file}")
+            output.result(f". {config_file}")
 
     def setup_git_repo(self, repo_url: Optional[str] = None) -> bool:
         """Setup git repository for configuration management"""
         try:
             if not repo_url:
-                console.print("[red]Error: repo_url is required[/red]")
+                output.error("Error: repo_url is required")
                 return False
 
             if self.configs_repo_path.exists():
-                console.print(
-                    f"[yellow]Git repository already exists at {self.configs_repo_path}[/yellow]"
-                )
+                output.warning(f"Git repository already exists at {self.configs_repo_path}")
                 try:
                     self.configs_repo = Repo(self.configs_repo_path)
-                    console.print("[green]Using existing git repository[/green]")
+                    output.success("Using existing git repository")
                     return True
                 except GitCommandError:
-                    console.print(
-                        "[yellow]Existing directory is not a git repository, reinitializing...[/yellow]"
-                    )
+                    output.result("[yellow]Existing directory is not a git repository, reinitializing...[/yellow]")
 
-            console.print(f"Setting up git repository at {self.configs_repo_path}")
+            output.result(f"Setting up git repository at {self.configs_repo_path}")
             self.configs_repo_path.mkdir(parents=True, exist_ok=True)
 
             # Initialize git repository
             self.configs_repo = Repo.init(self.configs_repo_path)
-            console.print("[green]Git repository initialized[/green]")
+            output.success("Git repository initialized")
 
             # Add remote origin
             origin = self.configs_repo.create_remote("origin", repo_url)
-            console.print(f"[green]Added remote origin: {repo_url}[/green]")
+            output.success(f"Added remote origin: {repo_url}")
 
             # Try to pull existing content
             try:
                 origin.fetch()
                 self.configs_repo.heads.main.checkout()
-                console.print(
-                    "[green]Pulled existing content from remote repository[/green]"
-                )
+                output.result("[green]Pulled existing content from remote repository[/green]")
             except Exception as e:
-                console.print(f"[yellow]Could not pull from remote: {e}[/yellow]")
-                console.print("[yellow]Creating initial commit...[/yellow]")
+                output.warning(f"Could not pull from remote: {e}")
+                output.result("[yellow]Creating initial commit...[/yellow]")
 
                 # Create initial commit
                 self.configs_repo.index.add("*")
@@ -331,32 +323,30 @@ function showproxy {{
 
             # Save repo_url to config using BaseTool interface
             self.set_config_value("git.remote_url", repo_url)
-            console.print("[green]Git repository setup completed[/green]")
+            output.result("[green]Git repository setup completed[/green]")
             return True
 
         except Exception as e:
-            console.print(f"[red]Failed to setup git repository: {e}[/red]")
+            output.error(f"Failed to setup git repository: {e}")
             return False
 
     def update_repo(self) -> bool:
         """Update git repository"""
         try:
             if not self.configs_repo_path.exists():
-                console.print(
-                    "[yellow]Git repository does not exist, run setup first[/yellow]"
-                )
+                output.result("[yellow]Git repository does not exist, run setup first[/yellow]")
                 return False
 
             self.configs_repo = Repo(self.configs_repo_path)
             origin = self.configs_repo.remotes.origin
 
-            console.print("Pulling latest changes from remote repository...")
+            output.result("Pulling latest changes from remote repository...")
             origin.pull()
-            console.print("[green]Repository updated successfully[/green]")
+            output.result("[green]Repository updated successfully[/green]")
             return True
 
         except Exception as e:
-            console.print(f"[red]Failed to update repository: {e}[/red]")
+            output.error(f"Failed to update repository: {e}")
             return False
 
     def _files_are_identical(self, file1: Path, file2: Path) -> bool:
@@ -394,18 +384,14 @@ function showproxy {{
         """Sync configuration from git repository"""
         try:
             if not self.configs_repo_path.exists():
-                console.print(
-                    "[yellow]Git repository does not exist, run setup first[/yellow]"
-                )
+                output.result("[yellow]Git repository does not exist, run setup first[/yellow]")
                 return False
 
             self.configs_repo = Repo(self.configs_repo_path)
             repo_config_path = self.get_repo_config_path(shell_name)
 
             if not repo_config_path.exists():
-                console.print(
-                    f"[yellow]No configuration found in repository for {shell_name}[/yellow]"
-                )
+                output.warning(f"No configuration found in repository for {shell_name}")
                 return False
 
             config_file = self.get_shell_config_file(shell_name)
@@ -414,33 +400,27 @@ function showproxy {{
             # Check if local config exists and compare with repo config
             if config_file.exists():
                 if self._files_are_identical(repo_config_path, config_file):
-                    console.print(
-                        f"[yellow]Configuration for {shell_name} is already up to date[/yellow]"
-                    )
+                    output.warning(f"Configuration for {shell_name} is already up to date")
                     return True
                 else:
-                    console.print(
-                        f"[blue]Configuration for {shell_name} has changes, updating...[/blue]"
-                    )
+                    output.info(f"Configuration for {shell_name} has changes, updating...")
             else:
-                console.print(
-                    f"[blue]Creating new configuration for {shell_name} from repository[/blue]"
-                )
+                output.info(f"Creating new configuration for {shell_name} from repository")
 
             # Copy from repository to local
             import shutil
 
             shutil.copy2(repo_config_path, config_file)
-            console.print(f"[green]Configuration synced for {shell_name}[/green]")
+            output.success(f"Configuration synced for {shell_name}")
             return True
 
         except Exception as e:
-            console.print(f"[red]Failed to sync configuration: {e}[/red]")
+            output.error(f"Failed to sync configuration: {e}")
             return False
 
     def list_configs(self) -> None:
         """List all available configurations"""
-        console.print("[bold]Available configurations:[/bold]")
+        output.result("[bold]Available configurations:[/bold]")
 
         for shell_name in self.SUPPORTED_SHELLS:
             config_file = self.get_shell_config_file(shell_name)
@@ -453,9 +433,9 @@ function showproxy {{
                 status.append("repo")
 
             if status:
-                console.print(f"  {shell_name}: {', '.join(status)}")
+                output.result(f"  {shell_name}: {', '.join(status)}")
             else:
-                console.print(f"  {shell_name}: none")
+                output.result(f"  {shell_name}: none")
 
     def initialize_config_if_needed(self, shell_name: str) -> bool:
         """Initialize configuration file if it doesn't exist, prioritizing repo config"""
@@ -474,24 +454,18 @@ function showproxy {{
                 import shutil
 
                 shutil.copy2(repo_config_path, config_file)
-                console.print(
-                    f"[green]Created configuration for {shell_name} from repository[/green]"
-                )
+                output.success(f"Created configuration for {shell_name} from repository")
                 return True
             else:
                 # Use default config
                 content = self.create_default_config(shell_name)
                 with open(config_file, "w", encoding="utf-8") as f:
                     f.write(content)
-                console.print(
-                    f"[green]Created default configuration for {shell_name}[/green]"
-                )
+                output.success(f"Created default configuration for {shell_name}")
                 return True
 
         except Exception as e:
-            console.print(
-                f"[red]Failed to create configuration for {shell_name}: {e}[/red]"
-            )
+            output.error(f"Failed to create configuration for {shell_name}: {e}")
             return False
 
     def _get_source_line(self, shell_name: str) -> str:
@@ -510,19 +484,19 @@ function showproxy {{
 
     def _show_activation_instructions(self, shell_name: str) -> None:
         """Show activation instructions for different shell types"""
-        console.print(f"\n[bold]To activate the configuration for {shell_name}:[/bold]")
+        output.result(f"\n[bold]To activate the configuration for {shell_name}:[/bold]")
 
         if shell_name in ["bash", "zsh"]:
-            console.print("  • Restart your terminal")
-            console.print(f"  • Or run: source ~/.{shell_name}rc")
+            output.result("  • Restart your terminal")
+            output.result(f"  • Or run: source ~/.{shell_name}rc")
         elif shell_name == "cmd":
-            console.print("  • Restart your command prompt")
-            console.print("  • Or run: call ~/.okit/data/shellconfig/cmd/config")
+            output.result("  • Restart your command prompt")
+            output.result("  • Or run: call ~/.okit/data/shellconfig/cmd/config")
         elif shell_name == "powershell":
-            console.print("  • Restart PowerShell")
-            console.print("  • Or run: . $PROFILE")
+            output.result("  • Restart PowerShell")
+            output.result("  • Or run: . $PROFILE")
 
-        console.print("  • Or start a new shell session")
+        output.result("  • Or start a new shell session")
 
     def get_rc_file_path(self, shell_name: str) -> Optional[Path]:
         """Get rc file path for shell
@@ -610,7 +584,7 @@ function showproxy {{
             return True
 
         except Exception as e:
-            console.print(f"[red]Failed to add source command: {e}[/red]")
+            output.error(f"Failed to add source command: {e}")
             return False
 
     def enable_config(self, shell_name: str) -> bool:
@@ -619,9 +593,7 @@ function showproxy {{
             rc_file = self.get_rc_file_path(shell_name)
 
             if not rc_file:
-                console.print(
-                    f"[yellow]No rc file configured for {shell_name}[/yellow]"
-                )
+                output.warning(f"No rc file configured for {shell_name}")
                 return False
 
             # Initialize config if needed
@@ -632,25 +604,21 @@ function showproxy {{
             if not rc_file.exists():
                 rc_file.parent.mkdir(parents=True, exist_ok=True)
                 rc_file.touch()
-                console.print(f"[green]Created rc file: {rc_file}[/green]")
+                output.success(f"Created rc file: {rc_file}")
 
             # Add source command
             source_line = self._get_source_line(shell_name)
             if self._add_source_command_to_rc_file(rc_file, source_line):
-                console.print(f"[green]Configuration enabled for {shell_name}[/green]")
+                output.success(f"Configuration enabled for {shell_name}")
                 # Show activation instructions
                 self._show_activation_instructions(shell_name)
                 return True
             else:
-                console.print(
-                    f"[yellow]Configuration already enabled for {shell_name}[/yellow]"
-                )
+                output.warning(f"Configuration already enabled for {shell_name}")
                 return True
 
         except Exception as e:
-            console.print(
-                f"[red]Failed to enable configuration for {shell_name}: {e}[/red]"
-            )
+            output.error(f"Failed to enable configuration for {shell_name}: {e}")
             return False
 
     def _remove_source_command_from_rc_file(
@@ -686,7 +654,7 @@ function showproxy {{
             return True
 
         except Exception as e:
-            console.print(f"[red]Failed to remove source command: {e}[/red]")
+            output.error(f"Failed to remove source command: {e}")
             return False
 
     def disable_config(self, shell_name: str) -> bool:
@@ -695,31 +663,25 @@ function showproxy {{
             rc_file = self.get_rc_file_path(shell_name)
 
             if not rc_file:
-                console.print(
-                    f"[yellow]No rc file configured for {shell_name}[/yellow]"
-                )
+                output.warning(f"No rc file configured for {shell_name}")
                 return False
 
             if not rc_file.exists():
-                console.print(f"[yellow]RC file {rc_file} does not exist[/yellow]")
+                output.warning(f"RC file {rc_file} does not exist")
                 return True
 
             source_line = self._get_source_line(shell_name)
 
             if self._remove_source_command_from_rc_file(rc_file, source_line):
-                console.print(f"[green]Configuration disabled for {shell_name}[/green]")
-                console.print(
-                    f"[yellow]Note: Restart your terminal or start a new shell session for changes to take effect[/yellow]"
-                )
+                output.success(f"Configuration disabled for {shell_name}")
+                output.warning(f"Note: Restart your terminal or start a new shell session for changes to take effect")
                 return True
             else:
-                console.print(f"[yellow]Configuration not found in {rc_file}[/yellow]")
+                output.warning(f"Configuration not found in {rc_file}")
                 return True
 
         except Exception as e:
-            console.print(
-                f"[red]Failed to disable configuration for {shell_name}: {e}[/red]"
-            )
+            output.error(f"Failed to disable configuration for {shell_name}: {e}")
             return False
 
     def check_config_status(self, shell_name: str) -> bool:
@@ -759,41 +721,35 @@ function showproxy {{
         ) -> None:
             """Manage tool configuration (similar to git config)"""
             try:
-                logger.info(
+                output.info(
                     f"Executing config command, action: {action}, key: {key}"
                 )
 
                 if action == "get":
                     if not key:
-                        console.print(
-                            "[red]Error: key is required for 'get' action[/red]"
-                        )
+                        output.result("[red]Error: key is required for 'get' action[/red]")
                         return
                     result = self.get_config_value(key)
                     if result is not None:
-                        console.print(result)
+                        output.result(result)
                     else:
-                        console.print(f"[yellow]No value found for key: {key}[/yellow]")
+                        output.warning(f"No value found for key: {key}")
 
                 elif action == "set":
                     if not key or value is None:
-                        console.print(
-                            "[red]Error: both key and value are required for 'set' action[/red]"
-                        )
+                        output.result("[red]Error: both key and value are required for 'set' action[/red]")
                         return
                     if self.set_config_value(key, value):
-                        console.print(f"[green]Set {key} = {value}[/green]")
+                        output.success(f"Set {key} = {value}")
                     else:
-                        console.print(f"[red]Failed to set {key}[/red]")
+                        output.error(f"Failed to set {key}")
 
                 elif action == "list":
                     # List all config and display
                     config_data = self.load_config()
 
                     if not config_data:
-                        console.print(
-                            "[yellow]No configuration parameters set[/yellow]"
-                        )
+                        output.result("[yellow]No configuration parameters set[/yellow]")
                         return
 
                     from rich.table import Table
@@ -805,7 +761,7 @@ function showproxy {{
                     for key, value in config_data.items():
                         table.add_row(key, str(value))
 
-                    console.print(table)
+                    output.result(table)
 
                 elif action == "setup":
                     # Setup git repository (replaces old setup_git command)
@@ -817,16 +773,12 @@ function showproxy {{
                         if config_repo_url:
                             self.setup_git_repo(config_repo_url)
                         else:
-                            console.print(
-                                "[yellow]No repo_url provided or configured. Use --repo-url option.[/yellow]"
-                            )
-                            console.print(
-                                "Example: config setup --repo-url https://github.com/user/repo.git"
-                            )
+                            output.result("[yellow]No repo_url provided or configured. Use --repo-url option.[/yellow]")
+                            output.result("Example: config setup --repo-url https://github.com/user/repo.git")
 
             except Exception as e:
-                logger.error(f"config command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
+                output.error(f"config command execution failed: {e}")
+                output.error(f"Error: {e}")
 
         @cli_group.command()
         @click.argument(
@@ -835,12 +787,12 @@ function showproxy {{
         def sync(shell: str) -> None:
             """Sync configuration from git repository"""
             try:
-                logger.info(f"Executing sync command, shell: {shell}")
+                output.info(f"Executing sync command, shell: {shell}")
                 self.sync_config(shell)
 
             except Exception as e:
-                logger.error(f"sync command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
+                output.error(f"sync command execution failed: {e}")
+                output.error(f"Error: {e}")
 
         @cli_group.command()
         @click.argument(
@@ -849,12 +801,12 @@ function showproxy {{
         def source(shell: str) -> None:
             """Show commands to source the configuration"""
             try:
-                logger.info(f"Executing source command, shell: {shell}")
+                output.info(f"Executing source command, shell: {shell}")
                 self.show_source_commands(shell)
 
             except Exception as e:
-                logger.error(f"source command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
+                output.error(f"source command execution failed: {e}")
+                output.error(f"Error: {e}")
 
         @cli_group.command()
         @click.argument(
@@ -863,12 +815,12 @@ function showproxy {{
         def enable(shell: str) -> None:
             """Enable customconfig by adding source command to rc file"""
             try:
-                logger.info(f"Executing enable command, shell: {shell}")
+                output.info(f"Executing enable command, shell: {shell}")
                 self.enable_config(shell)
 
             except Exception as e:
-                logger.error(f"enable command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
+                output.error(f"enable command execution failed: {e}")
+                output.error(f"Error: {e}")
 
         @cli_group.command()
         @click.argument(
@@ -877,12 +829,12 @@ function showproxy {{
         def disable(shell: str) -> None:
             """Disable customconfig by removing source command from rc file"""
             try:
-                logger.info(f"Executing disable command, shell: {shell}")
+                output.info(f"Executing disable command, shell: {shell}")
                 self.disable_config(shell)
 
             except Exception as e:
-                logger.error(f"disable command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
+                output.error(f"disable command execution failed: {e}")
+                output.error(f"Error: {e}")
 
         @cli_group.command()
         @click.argument(
@@ -891,41 +843,26 @@ function showproxy {{
         def status(shell: str) -> None:
             """Check if customconfig is enabled in rc file"""
             try:
-                logger.info(f"Executing status command, shell: {shell}")
+                output.info(f"Executing status command, shell: {shell}")
                 is_enabled = self.check_config_status(shell)
 
                 if is_enabled:
-                    console.print(
-                        f"[green]✓ Configuration is enabled for {shell}[/green]"
-                    )
+                    output.success(f"✓ Configuration is enabled for {shell}")
                 else:
-                    console.print(f"[red]✗ Configuration is disabled for {shell}[/red]")
+                    output.error(f"✗ Configuration is disabled for {shell}")
 
                 # Show additional info
                 config_file = self.get_shell_config_file(shell)
                 rc_file = self.get_rc_file_path(shell)
 
-                console.print(
-                    f"Config file: {config_file} ({'exists' if config_file.exists() else 'missing'})"
-                )
+                output.result(f"Config file: {config_file} ({'exists' if config_file.exists() else 'missing'})")
                 if rc_file:
-                    console.print(
-                        f"RC file: {rc_file} ({'exists' if rc_file.exists() else 'missing'})"
-                    )
+                    output.result(f"RC file: {rc_file} ({'exists' if rc_file.exists() else 'missing'})")
 
             except Exception as e:
-                logger.error(f"status command execution failed: {e}")
-                console.print(f"[red]Error: {e}[/red]")
-
-    def validate_config(self) -> bool:
-        """Validate configuration"""
-        if not self.tool_name:
-            logger.warning("Tool name is empty")
-            return False
-
-        logger.info("Configuration validation passed")
-        return True
+                output.error(f"status command execution failed: {e}")
+                output.error(f"Error: {e}")
 
     def _cleanup_impl(self) -> None:
         """Custom cleanup logic"""
-        logger.info("Executing custom cleanup logic")
+        output.info("Executing custom cleanup logic")
