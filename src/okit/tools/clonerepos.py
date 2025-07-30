@@ -2,7 +2,7 @@ import os
 import sys
 import click
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from okit.utils.log import output
 from okit.core.base_tool import BaseTool
 from okit.core.tool_decorator import okit_tool
@@ -11,10 +11,10 @@ from okit.core.tool_decorator import okit_tool
 def read_repo_list(file_path: str) -> List[str]:
     """读取仓库列表文件"""
     repos = []
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
             repos.append(line)
     return repos
@@ -22,13 +22,15 @@ def read_repo_list(file_path: str) -> List[str]:
 
 def get_repo_name(repo_url: str) -> str:
     """从仓库URL中提取仓库名称"""
-    repo_name = repo_url.rstrip('/').split('/')[-1]
-    if repo_name.endswith('.git'):
+    repo_name = repo_url.rstrip("/").split("/")[-1]
+    if repo_name.endswith(".git"):
         repo_name = repo_name[:-4]
     return repo_name
 
 
-@okit_tool("clonerepos", "Batch clone git repositories from a list file", use_subcommands=False)
+@okit_tool(
+    "clonerepos", "Batch clone git repositories from a list file", use_subcommands=False
+)
 class CloneRepos(BaseTool):
     """批量克隆 Git 仓库工具"""
 
@@ -55,29 +57,36 @@ Example:
         """添加工具特定的 CLI 命令"""
 
         @cli_group.command(name="clonerepos")
-        @click.argument('repo_list', type=click.Path(exists=True, dir_okay=False))
-        @click.option('-b', '--branch', default=None, help='Branch name to clone (optional)')
+        @click.argument("repo_list", type=click.Path(exists=True, dir_okay=False))
+        @click.option(
+            "-b", "--branch", default=None, help="Branch name to clone (optional)"
+        )
         def main(repo_list: str, branch: str) -> None:
             """Batch clone git repositories from a list file"""
             try:
-                output.debug(f"Executing clonerepos command, file: {repo_list}, branch: {branch}")
-                
+                output.debug(
+                    f"Executing clonerepos command, file: {repo_list}, branch: {branch}"
+                )
+
                 from git import Repo, GitCommandError
+
                 repo_list_data = read_repo_list(repo_list)
-                
+
                 if not repo_list_data:
                     output.error("No valid repository URLs found in the list file")
                     sys.exit(1)
-                
+
                 self._clone_repositories(repo_list_data, branch=branch)
-                
+
             except Exception as e:
                 output.error(f"clonerepos command execution failed: {e}")
 
-    def _clone_repositories(self, repo_list: List[str], branch: str = None) -> None:
+    def _clone_repositories(
+        self, repo_list: List[str], branch: Optional[str] = None
+    ) -> None:
         """克隆仓库列表"""
         from git import Repo, GitCommandError
-        
+
         success_count = 0
         fail_count = 0
         skip_count = 0
@@ -88,7 +97,7 @@ Example:
                 output.warning(f"Skip existing repo: {repo_url}")
                 skip_count += 1
                 continue
-                
+
             output.progress(f"Cloning: {repo_url}")
             try:
                 if branch:
@@ -101,16 +110,14 @@ Example:
             except GitCommandError as e:
                 output.error(f"Clone failed: {repo_url}\n  Reason: {e}")
                 fail_count += 1
-                
+
         output.info("Clone finished! Summary:")
         output.result(f"Success: {success_count}")
         output.result(f"Failed: {fail_count}")
         output.result(f"Skipped: {skip_count}")
 
-
-
     def _cleanup_impl(self) -> None:
         """自定义清理逻辑"""
         output.debug("Executing custom cleanup logic")
         # 工具特定的清理代码可以在这里添加
-        pass 
+        pass
