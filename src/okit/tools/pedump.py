@@ -181,7 +181,7 @@ Use 'pedump --help' to see available commands.
         def parse(files: Tuple[Path, ...], format: str) -> None:
             """Parse PE files and display information"""
             try:
-                self.logger.info(f"Executing parse command, files: {files}, format: {format}")
+                logger.info(f"Executing parse command, files: {files}, format: {format}")
                 
                 if not files:
                     console.print("[red]No files specified[/red]")
@@ -191,7 +191,7 @@ Use 'pedump --help' to see available commands.
                     self._parse_pe_file(file_path, format)
                     
             except Exception as e:
-                self.logger.error(f"parse command execution failed: {e}")
+                logger.error(f"parse command execution failed: {e}")
                 console.print(f"[red]Error: {e}[/red]")
 
     def _parse_pe_file(self, file_path: Path, format: str) -> None:
@@ -283,13 +283,13 @@ Use 'pedump --help' to see available commands.
     def validate_config(self) -> bool:
         """验证配置"""
         if not self.tool_name:
-            self.logger.warning("Tool name is empty")
+            logger.warning("Tool name is empty")
             return False
 
-        self.logger.info("Configuration validation passed")
+        logger.info("Configuration validation passed")
         return True
 
     def _cleanup_impl(self) -> None:
         """自定义清理逻辑"""
-        self.logger.info("Executing custom cleanup logic")
+        logger.info("Executing custom cleanup logic")
         pass

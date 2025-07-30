@@ -1021,10 +1021,10 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
             # Basic validation
             return True
         except Exception as e:
-            self.logger.error(f"Configuration validation failed: {e}")
+            logger.error(f"Configuration validation failed: {e}")
             return False
 
     def _cleanup_impl(self) -> None:
         """Custom cleanup logic"""
-        self.logger.info("Executing custom cleanup logic")
+        logger.info("Executing custom cleanup logic")
         pass
