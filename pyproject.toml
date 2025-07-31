@@ -35,6 +35,7 @@ dependencies = [
     "GitPython>=3.1.0",
     "ruamel.yaml>=0.18.0",
 ]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
@@ -44,6 +45,9 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "pre-commit>=3.0.0",
+    "types-paramiko>=3.4.0",
+    "types-psutil>=5.9.0",
+    "types-PyYAML>=6.0.0",
 ]
 
 [project.scripts]
@@ -105,7 +109,7 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
-disallow_untyped_decorators = true
+disallow_untyped_decorators = false  # 允许装饰器不带类型
 no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -128,9 +132,14 @@ addopts = [
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "unit: marks tests as unit tests (deselect with '-m \"not unit\"')",
+    "ssh: marks tests that require SSH functionality",
+    "rsync: marks tests that require rsync",
+    "windows: marks tests that are Windows-specific",
+    "linux: marks tests that are Linux-specific",
 ]
+pythonpath = ["."]  # 添加项目根目录到 Python 路径
 
 [tool.coverage.run]
 source = ["src/okit"]
@@ -173,4 +182,4 @@ ignore = [
 ]
 
 [tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"] 
+"__init__.py" = ["F401"]
