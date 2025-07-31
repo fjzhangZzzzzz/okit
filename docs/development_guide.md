@@ -155,16 +155,11 @@ class GitDiffSync(BaseTool):
 ### 日志输出
 
 ```python
-from okit.utils.log import logger, console
+from okit.utils.log import output
 
 def some_func():
-    # 普通日志输出
-    logger.info("开始同步")
-    logger.error("同步失败")
-
-    # 富文本输出
-    console.print("[green]同步成功[/green]")
-    console.print("[bold red]严重错误[/bold red]")
+    output.info("info message")
+    // ...
 ```
 
 ## 配置和数据管理
@@ -761,3 +756,213 @@ def import_optional_dependency():
 7. **代码规范**：遵循项目代码风格和命名规范
 8. **测试覆盖**：为工具功能编写测试用例
 9. **文档完善**：为工具提供清晰的文档和使用示例 
+
+## 测试指南
+
+### 测试环境准备
+
+```bash
+# 安装测试依赖
+uv pip install -e ".[test]"
+
+# 或者使用 pip
+pip install -e ".[test]"
+```
+
+### 运行测试
+
+#### 使用脚本运行测试
+
+Windows:
+```bash
+# 运行所有测试
+scripts\run_tests.bat
+
+# 运行指定测试文件
+scripts\run_tests.bat tests\tools\test_gitdiffsync.py
+
+# 运行指定测试类
+scripts\run_tests.bat tests\tools\test_gitdiffsync.py::TestGitDiffSync
+
+# 运行指定测试方法
+scripts\run_tests.bat tests\tools\test_gitdiffsync.py::TestGitDiffSync::test_sync
+```
+
+Linux/macOS:
+```bash
+# 运行所有测试
+./scripts/run_tests.sh
+
+# 运行指定测试文件
+./scripts/run_tests.sh tests/tools/test_gitdiffsync.py
+
+# 运行指定测试类
+./scripts/run_tests.sh tests/tools/test_gitdiffsync.py::TestGitDiffSync
+
+# 运行指定测试方法
+./scripts/run_tests.sh tests/tools/test_gitdiffsync.py::TestGitDiffSync::test_sync
+```
+
+#### 直接使用 pytest
+
+```bash
+# 运行所有测试
+pytest
+
+# 运行指定测试文件
+pytest tests/tools/test_gitdiffsync.py
+
+# 运行指定测试类
+pytest tests/tools/test_gitdiffsync.py::TestGitDiffSync
+
+# 运行指定测试方法
+pytest tests/tools/test_gitdiffsync.py::TestGitDiffSync::test_sync
+
+# 显示详细输出
+pytest -v
+
+# 显示测试覆盖率报告
+pytest --cov=src/okit
+
+# 生成 HTML 格式覆盖率报告
+pytest --cov=src/okit --cov-report=html
+```
+
+### 编写测试用例
+
+#### 基础测试示例
+
+```python
+from okit.tools.minimal_example import MinimalExample
+
+def test_minimal_example():
+    """测试最小示例工具"""
+    tool = MinimalExample()
+    
+    # 测试配置操作
+    tool.set_config_value("test_key", "test_value")
+    assert tool.get_config_value("test_key") == "test_value"
+    
+    # 测试数据操作
+    data_file = tool.get_data_file("test.txt")
+    with open(data_file, "w") as f:
+        f.write("test data")
+    assert tool.list_data_files() == ["test.txt"]
+```
+
+#### 使用 pytest 夹具
+
+```python
+import pytest
+from okit.tools.your_tool import YourTool
+
+@pytest.fixture
+def tool():
+    """创建工具实例夹具"""
+    return YourTool()
+
+@pytest.fixture
+def config_file(tool):
+    """创建测试配置夹具"""
+    tool.set_config_value("key", "value")
+    yield tool.get_config_file()
+    # 清理配置
+    tool.cleanup_config()
+
+def test_tool_config(tool, config_file):
+    """测试工具配置"""
+    assert tool.has_config()
+    assert tool.get_config_value("key") == "value"
+```
+
+#### 模拟外部依赖
+
+```python
+from unittest.mock import patch, MagicMock
+
+def test_external_api():
+    """测试外部 API 调用"""
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.json.return_value = {"status": "ok"}
+        
+        # 测试代码
+        result = your_api_call()
+        assert result["status"] == "ok"
+        mock_get.assert_called_once()
+```
+
+### 测试最佳实践
+
+1. **测试覆盖率**
+   - 保持测试覆盖率在 80% 以上
+   - 重点关注核心功能和边界条件
+   - 定期检查覆盖率报告，识别未测试的代码
+
+2. **测试组织**
+   - 测试文件结构与源码结构对应
+   - 每个工具脚本对应一个测试文件
+   - 使用有意义的测试方法名称
+
+3. **测试数据管理**
+   - 使用临时目录存放测试数据
+   - 测试结束后清理测试数据
+   - 避免测试间数据互相影响
+
+4. **异常测试**
+   - 测试异常处理逻辑
+   - 验证错误信息和日志输出
+   - 确保资源正确释放
+
+5. **配置测试**
+   - 测试配置文件的读写
+   - 验证配置默认值
+   - 测试配置迁移逻辑
+
+6. **持续集成**
+   - 在 CI 流程中运行测试
+   - 设置测试覆盖率阈值
+   - 自动生成测试报告
+
+### 常见测试问题
+
+#### 1. 测试数据清理
+
+**问题**: 测试数据未正确清理影响其他测试
+
+**解决方案**:
+```python
+@pytest.fixture(autouse=True)
+def cleanup():
+    """自动清理测试数据"""
+    yield
+    # 测试后清理
+    shutil.rmtree("test_data", ignore_errors=True)
+```
+
+#### 2. 配置文件冲突
+
+**问题**: 测试使用真实配置文件导致冲突
+
+**解决方案**:
+```python
+@pytest.fixture
+def mock_config_path(tmp_path):
+    """使用临时配置目录"""
+    with patch("okit.core.base_tool.BaseTool.get_config_path") as mock:
+        mock.return_value = tmp_path / "config"
+        yield mock
+```
+
+#### 3. 外部依赖处理
+
+**问题**: 测试依赖外部服务导致不稳定
+
+**解决方案**:
+```python
+@pytest.fixture
+def mock_api():
+    """模拟外部 API"""
+    with patch("your_module.api_client") as mock:
+        mock.get_data.return_value = {"test": "data"}
+        yield mock
+```
