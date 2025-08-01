@@ -30,7 +30,7 @@ class LazyCommand(click.Command):
             self._tool_instance.use_subcommands = self.use_subcommands
             
             # 创建真正的CLI命令
-            self._real_command = self._tool_instance.create_cli_group(self.tool_name, self.tool_description)
+            self._real_command = self._tool_instance.create_cli_group()
             
             # 复制回调函数
             if hasattr(self._real_command, 'callback') and self._real_command.callback:
@@ -73,7 +73,7 @@ class LazyGroup(click.Group):
         if self._real_group is None:
             self._tool_instance = self.tool_class(self.tool_name, self.tool_description)
             self._tool_instance.use_subcommands = True
-            self._real_group = self._tool_instance.create_cli_group(self.tool_name, self.tool_description)
+            self._real_group = self._tool_instance.create_cli_group()
             
             # 复制callback
             if hasattr(self._real_group, 'callback') and self._real_group.callback:

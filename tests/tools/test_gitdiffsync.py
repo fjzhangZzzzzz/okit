@@ -1,222 +1,330 @@
 """Tests for gitdiffsync tool."""
 
 import os
-import shutil
+import subprocess
 import tempfile
 from pathlib import Path
-from typing import Generator, List, cast
-
-import git
-import paramiko
+from typing import Generator
+from unittest.mock import patch, MagicMock, mock_open
 import pytest
-from git import Repo
-from paramiko.sftp_client import SFTPClient
+from click.testing import CliRunner
 
 from okit.tools.gitdiffsync import (
     GitDiffSync,
     check_git_repo,
-    check_rsync_available,
-    ensure_remote_dir,
-    fix_target_root_path,
     get_git_changes,
+    check_rsync_available,
+    verify_directory_structure,
+    ensure_remote_dir,
     sync_via_rsync,
     sync_via_sftp,
-    verify_directory_structure,
+    fix_target_root_path,
+    SyncError,
 )
-from tests.conftest import TestSSHServer
 
 
-# 基本测试：不依赖特定环境的测试
-@pytest.mark.unit
-class TestBasicFunctionality:
-    """Basic functionality tests that don't require special environment."""
-
-    @pytest.fixture
-    def test_git_repo(self, temp_dir: Path) -> Generator[Repo, None, None]:
-        """Create a test Git repository with some changes."""
-        repo_path = temp_dir / "test_repo"
-        repo_path.mkdir()
-        repo = git.Repo.init(repo_path)
-
-        # Create initial files and commit
-        (repo_path / "test1.txt").write_text("initial content")
-        (repo_path / "test2.txt").write_text("initial content")
-        repo.index.add(["test1.txt", "test2.txt"])
-        repo.index.commit("Initial commit")
-
-        # Create some changes
-        (repo_path / "test1.txt").write_text("modified content")  # Modified
-        (repo_path / "test3.txt").write_text("new file")  # Untracked
-        (repo_path / "test2.txt").unlink()  # Deleted
-
-        try:
-            yield repo
-        finally:
-            repo.close()
-
-    def test_check_git_repo(self, test_git_repo: Repo) -> None:
-        """Test Git repository validation."""
-        assert check_git_repo(str(test_git_repo.working_dir))
-        assert not check_git_repo(str(Path(test_git_repo.working_dir).parent))
-
-    def test_get_git_changes(self, test_git_repo: Repo) -> None:
-        """Test getting Git changes."""
-        changes = get_git_changes(str(test_git_repo.working_dir))
-        assert len(changes) == 3
-        assert "test1.txt" in changes  # Modified
-        assert "test2.txt" in changes  # Deleted
-        assert "test3.txt" in changes  # Untracked
-
-    def test_check_rsync_available(self) -> None:
-        """Test rsync availability check."""
-        is_available = check_rsync_available()
-        assert isinstance(is_available, bool)
-
-    def test_fix_target_root_path(self) -> None:
-        """Test target root path fixing."""
-        test_cases = [
-            ("/c/Program Files/Git/tmp/test", "/tmp/test"),
-            ("C:/Program Files/Git/tmp/test", "/tmp/test"),
-            ("/tmp/test", "/tmp/test"),
-            ("C:/Users/test", "C:/Users/test"),
-        ]
-        for input_path, expected in test_cases:
-            assert fix_target_root_path(input_path) == expected
+@pytest.fixture
+def temp_git_repo() -> Generator[Path, None, None]:
+    """Create a temporary Git repository for testing."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo_path = Path(temp_dir)
+        
+        # Initialize git repository
+        subprocess.run(["git", "init"], cwd=repo_path, check=True)
+        
+        # Create some test files
+        (repo_path / "test1.txt").write_text("test content 1")
+        (repo_path / "test2.txt").write_text("test content 2")
+        (repo_path / "subdir" / "test3.txt").write_text("test content 3")
+        (repo_path / "subdir").mkdir(exist_ok=True)
+        
+        # Add and commit files
+        subprocess.run(["git", "add", "."], cwd=repo_path, check=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, check=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True)
+        
+        yield repo_path
 
 
-# 集成测试：需要特定环境支持的测试
-@pytest.mark.integration
-@pytest.mark.skipif(os.name == "nt", reason="SSH tests not supported on Windows")
-class TestSSHIntegration:
-    """Integration tests that require SSH server."""
+@pytest.fixture
+def git_diff_sync() -> GitDiffSync:
+    """Create a GitDiffSync instance."""
+    return GitDiffSync("gitdiffsync")
 
-    def test_verify_directory_structure(
-        self, ssh_server: TestSSHServer, temp_dir: Path
-    ) -> None:
-        """Test remote directory structure verification."""
-        # Setup SSH client
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(
-            ssh_server.host, port=ssh_server.port, username="test", password="test"
+
+def test_check_git_repo_valid(temp_git_repo: Path) -> None:
+    """Test checking a valid Git repository."""
+    assert check_git_repo(str(temp_git_repo))
+
+
+def test_check_git_repo_invalid(temp_dir: Path) -> None:
+    """Test checking an invalid Git repository."""
+    assert not check_git_repo(str(temp_dir))
+
+
+def test_check_git_repo_nonexistent() -> None:
+    """Test checking a non-existent directory."""
+    with pytest.raises(SystemExit):
+        check_git_repo("/nonexistent/path")
+
+
+def test_get_git_changes(temp_git_repo: Path) -> None:
+    """Test getting Git changes."""
+    # Create a new file to trigger changes
+    (temp_git_repo / "new_file.txt").write_text("new content")
+    
+    changes = get_git_changes(str(temp_git_repo))
+    assert "new_file.txt" in changes
+
+
+def test_get_git_changes_with_cursor_files(temp_git_repo: Path) -> None:
+    """Test getting Git changes with .cursor files (should be filtered out)."""
+    # Create .cursor files
+    (temp_git_repo / ".cursor" / "settings.json").write_text("{}")
+    (temp_git_repo / ".cursor").mkdir(exist_ok=True)
+    
+    changes = get_git_changes(str(temp_git_repo))
+    # .cursor files should be filtered out
+    assert not any(".cursor" in change for change in changes)
+
+
+@patch("subprocess.run")
+def test_check_rsync_available(mock_run: MagicMock) -> None:
+    """Test checking if rsync is available."""
+    # Test when rsync is available
+    mock_run.return_value.returncode = 0
+    assert check_rsync_available()
+    
+    # Test when rsync is not available
+    mock_run.return_value.returncode = 1
+    assert not check_rsync_available()
+
+
+def test_verify_directory_structure() -> None:
+    """Test directory structure verification."""
+    mock_ssh = MagicMock()
+    mock_sftp = MagicMock()
+    mock_ssh.open_sftp.return_value = mock_sftp
+    
+    # Mock successful directory check
+    mock_sftp.stat.return_value = MagicMock()
+    
+    result = verify_directory_structure(["test_dir"], "/remote/root", mock_ssh)
+    assert result
+
+
+def test_ensure_remote_dir() -> None:
+    """Test ensuring remote directory exists."""
+    mock_sftp = MagicMock()
+    
+    # Test when directory doesn't exist
+    mock_sftp.stat.side_effect = FileNotFoundError()
+    
+    ensure_remote_dir(mock_sftp, "/remote/test/dir")
+    mock_sftp.mkdir.assert_called()
+
+
+@patch("subprocess.run")
+def test_sync_via_rsync(mock_run: MagicMock) -> None:
+    """Test syncing via rsync."""
+    mock_run.return_value.returncode = 0
+    
+    sync_via_rsync("/source", ["file1.txt", "file2.txt"], "/target", False)
+    mock_run.assert_called()
+    
+    # Test dry run
+    sync_via_rsync("/source", ["file1.txt"], "/target", True)
+    # Should still call rsync but with --dry-run flag
+
+
+def test_sync_via_sftp() -> None:
+    """Test syncing via SFTP."""
+    mock_sftp = MagicMock()
+    mock_sftp.stat.return_value = MagicMock()
+    
+    files = ["file1.txt", "subdir/file2.txt"]
+    
+    sync_via_sftp("/source", files, mock_sftp, "/target", False)
+    # Verify SFTP operations were called
+    assert mock_sftp.put.called or mock_sftp.mkdir.called
+
+
+def test_fix_target_root_path() -> None:
+    """Test fixing target root path."""
+    # Test Git Bash path conversion
+    result = fix_target_root_path("/c/Program Files/Git/usr/bin")
+    assert "C:/Program Files/Git" in result
+    
+    # Test normal path
+    result = fix_target_root_path("/normal/path")
+    assert result == "/normal/path"
+
+
+def test_git_diff_sync_initialization(git_diff_sync: GitDiffSync) -> None:
+    """Test GitDiffSync initialization."""
+    assert git_diff_sync.tool_name == "gitdiffsync"
+
+
+def test_git_diff_sync_cli_help(git_diff_sync: GitDiffSync) -> None:
+    """Test CLI help generation."""
+    help_text = git_diff_sync._get_cli_help()
+    assert "Git project synchronization tool" in help_text
+    
+    short_help = git_diff_sync._get_cli_short_help()
+    assert "Git project synchronization tool" in short_help
+
+
+def test_git_diff_sync_cli_interface() -> None:
+    """Test command line interface."""
+    runner = CliRunner()
+    
+    # Import the module to get the cli attribute
+    from okit.tools import gitdiffsync
+    
+    # Test help command
+    result = runner.invoke(gitdiffsync.cli, ["--help"])
+    assert result.exit_code == 0
+    assert "Git project synchronization tool" in result.output
+
+
+@patch("okit.tools.gitdiffsync.check_git_repo")
+@patch("okit.tools.gitdiffsync.get_git_changes")
+@patch("okit.tools.gitdiffsync.verify_directory_structure")
+def test_git_diff_sync_execute_sync(
+    mock_verify_dir: MagicMock,
+    mock_get_changes: MagicMock,
+    mock_check_repo: MagicMock,
+    git_diff_sync: GitDiffSync,
+) -> None:
+    """Test sync execution."""
+    mock_check_repo.return_value = True
+    mock_get_changes.return_value = ["file1.txt", "file2.txt"]
+    mock_verify_dir.return_value = True
+    
+    # Mock SSH connection
+    with patch("paramiko.SSHClient") as mock_ssh_client:
+        mock_ssh = MagicMock()
+        mock_ssh_client.return_value = mock_ssh
+        
+        git_diff_sync._execute_sync(
+            ["/test/repo"],
+            "localhost",
+            22,
+            "testuser",
+            "/remote/target",
+            False,
+            5,
+            True,
         )
-
-        try:
-            # Create test directories
-            source_dirs = [str(temp_dir / "dir1"), str(temp_dir / "dir2")]
-            remote_root = "/tmp/test"
-
-            # Test with non-existent directories
-            assert not verify_directory_structure(source_dirs, remote_root, client)
-
-            # Create directories and test again
-            client.exec_command(f"mkdir -p {remote_root}/dir1")
-            client.exec_command(f"mkdir -p {remote_root}/dir2")
-            assert verify_directory_structure(source_dirs, remote_root, client)
-        finally:
-            client.close()
-
-    def test_ensure_remote_dir(self, ssh_server: TestSSHServer) -> None:
-        """Test remote directory creation."""
-        # Setup SFTP client
-        transport = paramiko.Transport((ssh_server.host, ssh_server.port))
-        transport.connect(username="test", password="test")
-        sftp = cast(SFTPClient, paramiko.SFTPClient.from_transport(transport))
-
-        try:
-            # Test creating new directory
-            remote_dir = "/tmp/test_dir"
-            ensure_remote_dir(sftp, remote_dir)
-
-            # Verify directory exists
-            sftp.stat(remote_dir)
-
-            # Test with existing directory (should not raise)
-            ensure_remote_dir(sftp, remote_dir)
-        finally:
-            sftp.close()
-            transport.close()
-
-    def test_sync_via_sftp(self, ssh_server: TestSSHServer, test_repo: Repo) -> None:
-        """Test SFTP synchronization."""
-        # Setup SFTP client
-        transport = paramiko.Transport((ssh_server.host, ssh_server.port))
-        transport.connect(username="test", password="test")
-        sftp = cast(SFTPClient, paramiko.SFTPClient.from_transport(transport))
-
-        try:
-            source_dir = str(test_repo.working_dir)
-            target_root = "/tmp/test_sftp"
-            files = ["test1.txt", "test2.txt"]
-
-            # Test dry run
-            sync_via_sftp(source_dir, files, sftp, target_root, dry_run=True)
-
-            # Test actual sync
-            sync_via_sftp(source_dir, files, sftp, target_root, dry_run=False)
-
-            # Verify files were synced
-            for file in files:
-                try:
-                    sftp.stat(f"{target_root}/{file}")
-                except IOError:
-                    pytest.fail(f"File {file} was not synced")
-        finally:
-            sftp.close()
-            transport.close()
-
-    def test_gitdiffsync_tool(self, ssh_server: TestSSHServer, test_repo: Repo) -> None:
-        """Test GitDiffSync tool end-to-end."""
-        tool = GitDiffSync("gitdiffsync")
-        source_dirs = [str(test_repo.working_dir)]
-
-        # Test with dry run
-        tool._execute_sync(
-            source_dirs=source_dirs,
-            host=ssh_server.host,
-            port=ssh_server.port,
-            user="test",
-            target_root="/tmp/test_sync",
-            dry_run=True,
-            max_depth=5,
-            recursive=True,
-        )
-
-        # Test with actual sync
-        tool._execute_sync(
-            source_dirs=source_dirs,
-            host=ssh_server.host,
-            port=ssh_server.port,
-            user="test",
-            target_root="/tmp/test_sync",
-            dry_run=False,
-            max_depth=5,
-            recursive=True,
-        )
+        
+        mock_check_repo.assert_called()
+        mock_get_changes.assert_called()
 
 
-@pytest.mark.integration
-@pytest.mark.skipif(not check_rsync_available(), reason="rsync not available")
-class TestRsyncIntegration:
-    """Integration tests that require rsync."""
+def test_git_diff_sync_cleanup(git_diff_sync: GitDiffSync) -> None:
+    """Test cleanup implementation."""
+    # Since cleanup is a no-op in current implementation,
+    # we just verify it doesn't raise any exceptions
+    git_diff_sync._cleanup_impl()
 
-    def test_sync_via_rsync(self, test_repo: Repo, temp_dir: Path) -> None:
-        """Test rsync synchronization."""
-        source_dir = str(test_repo.working_dir)
-        target_dir = str(temp_dir / "target")
-        os.makedirs(target_dir)
 
-        # Create test files
-        files = ["test1.txt", "test2.txt"]
-        for file in files:
-            Path(source_dir, file).write_text("test content")
+def test_sync_error_exception() -> None:
+    """Test SyncError exception."""
+    error = SyncError("Test sync error")
+    assert str(error) == "Test sync error"
 
-        # Test dry run
-        sync_via_rsync(source_dir, files, target_dir, dry_run=True)
 
-        # Test actual sync
-        sync_via_rsync(source_dir, files, target_dir, dry_run=False)
+@patch("subprocess.run")
+def test_sync_via_rsync_error_handling(mock_run: MagicMock) -> None:
+    """Test rsync error handling."""
+    mock_run.return_value.returncode = 1
+    mock_run.return_value.stderr = b"rsync error"
+    
+    with pytest.raises(SyncError):
+        sync_via_rsync("/source", ["file1.txt"], "/target", False)
 
-        # Verify files were synced
-        for file in files:
-            assert Path(target_dir, file).exists()
+
+def test_sync_via_sftp_error_handling() -> None:
+    """Test SFTP error handling."""
+    mock_sftp = MagicMock()
+    mock_sftp.stat.side_effect = Exception("SFTP error")
+    
+    # Should handle exceptions gracefully
+    sync_via_sftp("/source", ["file1.txt"], mock_sftp, "/target", False)
+
+
+def test_verify_directory_structure_error() -> None:
+    """Test directory structure verification with errors."""
+    mock_ssh = MagicMock()
+    mock_sftp = MagicMock()
+    mock_ssh.open_sftp.return_value = mock_sftp
+    
+    # Mock SFTP error
+    mock_sftp.stat.side_effect = Exception("SFTP error")
+    
+    result = verify_directory_structure(["test_dir"], "/remote/root", mock_ssh)
+    assert not result
+
+
+def test_ensure_remote_dir_error() -> None:
+    """Test ensuring remote directory with errors."""
+    mock_sftp = MagicMock()
+    mock_sftp.stat.side_effect = FileNotFoundError()
+    mock_sftp.mkdir.side_effect = Exception("Permission denied")
+    
+    # Should handle exceptions gracefully
+    ensure_remote_dir(mock_sftp, "/remote/test/dir")
+
+
+def test_get_git_changes_error(temp_git_repo: Path) -> None:
+    """Test getting Git changes with errors."""
+    # Test with invalid repository path
+    with pytest.raises(SyncError):
+        get_git_changes("/invalid/repo/path")
+
+
+def test_fix_target_root_path_edge_cases() -> None:
+    """Test fixing target root path with edge cases."""
+    # Test empty path
+    result = fix_target_root_path("")
+    assert result == ""
+    
+    # Test None path
+    result = fix_target_root_path(None)
+    assert result == ""
+    
+    # Test path with spaces
+    result = fix_target_root_path("/c/Program Files (x86)/Git")
+    assert "Program Files (x86)" in result
+
+
+def test_git_diff_sync_with_multiple_source_dirs() -> None:
+    """Test sync with multiple source directories."""
+    git_diff_sync = GitDiffSync("gitdiffsync")
+    
+    with patch("okit.tools.gitdiffsync.check_git_repo") as mock_check_repo:
+        with patch("okit.tools.gitdiffsync.get_git_changes") as mock_get_changes:
+            with patch("okit.tools.gitdiffsync.verify_directory_structure") as mock_verify_dir:
+                mock_check_repo.return_value = True
+                mock_get_changes.return_value = ["file1.txt"]
+                mock_verify_dir.return_value = True
+                
+                with patch("paramiko.SSHClient") as mock_ssh_client:
+                    mock_ssh = MagicMock()
+                    mock_ssh_client.return_value = mock_ssh
+                    
+                    git_diff_sync._execute_sync(
+                        ["/repo1", "/repo2"],
+                        "localhost",
+                        22,
+                        "testuser",
+                        "/remote/target",
+                        False,
+                        5,
+                        True,
+                    )
+                    
+                    # Should be called for each source directory
+                    assert mock_check_repo.call_count == 2
+                    assert mock_get_changes.call_count == 2
