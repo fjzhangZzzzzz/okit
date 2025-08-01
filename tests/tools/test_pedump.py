@@ -2,8 +2,12 @@
 
 import os
 import struct
+import json
+import io
 from pathlib import Path
 from typing import Generator
+from unittest.mock import patch
+from click.testing import CliRunner
 
 import pytest
 
@@ -150,3 +154,114 @@ def test_pe_dump_output_formats(pe_dump: PEDump, pe_parser: PEParser) -> None:
 
     # Test CSV output
     pe_dump._output_csv(info)
+
+
+@pytest.fixture
+def pe32plus_file(temp_dir: Path) -> Generator[Path, None, None]:
+    """Create a sample PE32+ (64-bit) file for testing."""
+    pe_file = temp_dir / "test64.exe"
+    
+    with open(pe_file, "wb") as f:
+        # DOS Header
+        f.write(b"MZ")
+        f.write(b"\x00" * 58)
+        f.write(struct.pack("<L", 0x80))
+
+        # PE Header
+        f.seek(0x80)
+        f.write(b"PE\x00\x00")
+        f.write(struct.pack("<H", 0x8664))  # Machine (AMD64)
+        f.write(struct.pack("<H", 2))  # Number of sections
+        f.write(struct.pack("<L", 0))  # Timestamp
+        f.write(struct.pack("<L", 0))  # PointerToSymbolTable
+        f.write(struct.pack("<L", 0))  # NumberOfSymbols
+        f.write(struct.pack("<H", 0xF0))  # SizeOfOptionalHeader
+        f.write(struct.pack("<H", 0x22))  # Characteristics
+
+        # Optional Header (PE32+)
+        f.write(struct.pack("<H", 0x20B))  # Magic (PE32+)
+        f.write(b"\x00" * 0xEE)  # Rest of optional header
+
+        # Section Headers (same as PE32)
+        f.write(b".text\x00\x00\x00")
+        f.write(struct.pack("<L", 0x1000))
+        f.write(struct.pack("<L", 0x1000))
+        f.write(struct.pack("<L", 0x1000))
+        f.write(struct.pack("<L", 0x400))
+        f.write(b"\x00" * 16)
+
+    yield pe_file
+
+
+def test_pe_parser_pe32plus(pe32plus_file: Path) -> None:
+    """Test parsing of PE32+ (64-bit) files."""
+    parser = PEParser(pe32plus_file)
+    parser.parse()
+    
+    assert parser.pe_header["Machine"] == hex(0x8664)  # AMD64
+    assert "Magic" in parser.optional_header
+    assert parser.optional_header["Magic"] == hex(0x20B)  # PE32+
+
+
+def test_file_read_error(temp_dir: Path) -> None:
+    """Test handling of file read errors."""
+    non_existent_file = temp_dir / "non_existent.exe"
+    
+    with pytest.raises(FileNotFoundError):
+        parser = PEParser(non_existent_file)
+        parser.parse()
+
+
+def test_pe_dump_cli(pe_dump: PEDump, sample_pe_file: Path) -> None:
+    """Test command line interface."""
+    runner = CliRunner()
+    
+    # Import the module to get the cli attribute
+    from okit.tools import pedump
+    
+    # Test help command
+    result = runner.invoke(pedump.cli, ["--help"])
+    assert result.exit_code == 0
+    assert "PE File Info Parser" in result.output
+    
+    # Test parse command with different formats (just check exit codes)
+    result = runner.invoke(pedump.cli, ["parse", str(sample_pe_file)])
+    assert result.exit_code == 0
+    
+    result = runner.invoke(pedump.cli, ["parse", "-f", "json", str(sample_pe_file)])
+    assert result.exit_code == 0
+    
+    result = runner.invoke(pedump.cli, ["parse", "-f", "csv", str(sample_pe_file)])
+    assert result.exit_code == 0
+
+
+def test_output_format_completeness(pe_dump: PEDump, pe_parser: PEParser) -> None:
+    """Test completeness of different output formats."""
+    pe_parser.parse()
+    info = pe_parser.get_info()
+    
+    # Test table output
+    with patch("sys.stdout", new=io.StringIO()) as fake_out:
+        pe_dump._output_table(info)
+        table_output = fake_out.getvalue()
+        assert "PE File:" in table_output
+        assert "Sections" in table_output
+        assert info["file_path"] in table_output
+        for section in info["sections"]:
+            assert section["Name"] in table_output
+    
+    # Test CSV output
+    with patch("sys.stdout", new=io.StringIO()) as fake_out:
+        pe_dump._output_csv(info)
+        csv_output = fake_out.getvalue()
+        assert "Property,Value" in csv_output
+        assert "Section Name,Virtual Size" in csv_output
+        for section in info["sections"]:
+            assert section["Name"] in csv_output
+
+
+def test_cleanup(pe_dump: PEDump) -> None:
+    """Test cleanup implementation."""
+    # Since cleanup is a no-op in current implementation,
+    # we just verify it doesn't raise any exceptions
+    pe_dump._cleanup_impl()

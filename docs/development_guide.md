@@ -763,10 +763,7 @@ def import_optional_dependency():
 
 ```bash
 # 安装测试依赖
-uv pip install -e ".[test]"
-
-# 或者使用 pip
-pip install -e ".[test]"
+uv pip install -e ".[dev]"
 ```
 
 ### 运行测试

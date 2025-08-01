@@ -76,7 +76,7 @@ class PEParser:
             "<HHLLLHH", self.data[e_lfanew+4:e_lfanew+24]
         )
         self.pe_header = {
-            "Signature": signature.decode(errors="replace"),
+            "Signature": signature.decode(errors="replace")[:2],  # Only keep 'PE' part
             "Machine": hex(machine),
             "NumberOfSections": num_sections,
             "TimeDateStamp": timestamp,
@@ -122,7 +122,7 @@ class PEParser:
             section_data = self.data[section_offset + i*40:section_offset + (i+1)*40]
             if len(section_data) < 40:
                 break
-            name, virtual_size, virtual_address, size_of_raw_data, pointer_to_raw_data, pointer_to_relocations, pointer_to_line_numbers, num_relocations, num_line_numbers, characteristics = struct.unpack("<8sLLLLLLHH", section_data)
+            name, virtual_size, virtual_address, size_of_raw_data, pointer_to_raw_data, pointer_to_relocations, pointer_to_line_numbers, num_relocations, num_line_numbers, characteristics = struct.unpack("<8sLLLLLLHHL", section_data)
             section_name = name.decode(errors="replace").rstrip('\x00')
             self.sections.append({
                 "Name": section_name,
@@ -229,7 +229,9 @@ Use 'pedump --help' to see available commands.
         file_table.add_row("Image Base", info['optional_header']['ImageBase'])
         file_table.add_row("Subsystem", info['optional_header']['Subsystem'])
         
-        output.result(file_table)
+        from rich.console import Console
+        console = Console(record=True)
+        console.print(file_table)
         
         # 节信息表格
         if info['sections']:
@@ -247,15 +249,18 @@ Use 'pedump --help' to see available commands.
                     str(section['SizeOfRawData'])
                 )
             
-            output.result(section_table)
+            console.print(section_table)
+            
+        # 返回渲染后的文本
+        output.result(console.export_text())
 
     def _output_csv(self, info: Dict[str, Any]) -> None:
         """以 CSV 形式输出信息"""
         import csv
         import io
         
-        output = io.StringIO()
-        writer = csv.writer(output)
+        csv_output = io.StringIO()
+        writer = csv.writer(csv_output)
         
         # 写入文件信息
         writer.writerow(['Property', 'Value'])
@@ -277,7 +282,8 @@ Use 'pedump --help' to see available commands.
                 section['SizeOfRawData']
             ])
         
-        output.result(output.getvalue())
+        from okit.utils.log import output as log_output
+        log_output.result(csv_output.getvalue())
 
 
 

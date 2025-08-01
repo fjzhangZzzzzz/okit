@@ -852,7 +852,7 @@ Based on: https://github.com/ryanlycch/MobaXterm-keygen
         @click.option("--username", required=True, help="Username for the license")
         @click.option("--version", required=True, help="MobaXterm version (e.g., 22.0)")
         @click.option(
-            "--output", required=True, help="Output file path for Custom.mxtpro"
+            "--output-path", required=True, help="Output file path for Custom.mxtpro"
         )
         def generate(username: str, version: str, output_path: str) -> None:
             """Generate Custom.mxtpro license file"""

@@ -6,7 +6,9 @@ import json
 import logging
 from datetime import datetime
 import shutil
-# from ruamel.yaml import YAML  # Lazy import to avoid 55ms startup cost
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ruamel.yaml import YAML  # type-only import
 
 from okit.utils.log import output
 
@@ -62,8 +64,10 @@ class BaseTool(ABC):
             rest_unix = rest.replace('\\', '/')
             unix_path = f"/{drive.lower()}{rest_unix}"
             return unix_path
-
-        return path_str
+        elif path_str.startswith('/'):  # Unix-style path
+            return path_str
+        else:  # Other paths
+            return path_str.replace('\\', '/')
 
     def _is_git_bash(self) -> bool:
         """Detect if running in git bash environment"""
@@ -146,7 +150,7 @@ class BaseTool(ABC):
 
         if not config_file.exists():
             output.debug(
-                f"Config file does not exist, using default config: {config_file}"
+                f"Config file does not exist: {config_file}"
             )
             return default_config.copy()
 
@@ -155,7 +159,7 @@ class BaseTool(ABC):
                 config = self._get_yaml().load(f) or {}
 
             output.debug(f"Successfully loaded config file: {config_file}")
-            return config
+            return config if config else default_config.copy()
         except Exception as e:
             output.error(f"Failed to load config file: {config_file}, Error: {e}")
             return default_config.copy()
@@ -291,11 +295,10 @@ class BaseTool(ABC):
                 else:
                     shutil.rmtree(target_path)
                 output.debug(f"Successfully cleaned data: {target_path}")
-                return True
-            return True
+            return not target_path.exists()  # Success if path doesn't exist or was removed
         except Exception as e:
             output.error(f"Failed to clean data: {target_path}, Error: {e}")
-            return False
+            return False  # Any error during cleanup is a failure
 
     def list_data_files(self, *path_parts: str) -> List[Path]:
         """
@@ -359,13 +362,26 @@ class BaseTool(ABC):
         config_file = self.get_config_file()
 
         try:
-            # Backup current config first
+            # Read backup content first
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup_content = self._get_yaml().load(f)
+
+            # Backup current config
             if config_file.exists():
                 self.backup_config()
 
             # Restore config
             config_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(backup_path, config_file)
+            with open(config_file, "w", encoding="utf-8") as f:
+                self._get_yaml().dump(backup_content, f)
+
+            # Verify restore was successful
+            with open(config_file, "r", encoding="utf-8") as f:
+                restored_content = self._get_yaml().load(f)
+            
+            if backup_content != restored_content:
+                output.error("Config file restore verification failed")
+                return False
 
             output.debug(f"Config file restored: {config_file}")
             return True
@@ -460,18 +476,6 @@ class BaseTool(ABC):
             cli_group: Click command group for adding subcommands
         """
         pass
-
-    def validate_config(self) -> bool:
-        """
-        Validate tool configuration (optional override)
-        
-        Subclasses can override this method to provide custom validation logic.
-        Default implementation always returns True.
-
-        Returns:
-            bool: Whether configuration is valid
-        """
-        return True
 
     def get_tool_info(self) -> Dict[str, Any]:
         """Get tool information"""
