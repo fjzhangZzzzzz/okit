@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 import shutil
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from ruamel.yaml import YAML  # type-only import
 
@@ -30,6 +31,7 @@ class BaseTool(ABC):
         """
         self.tool_name = tool_name
         self.description = description
+        self.use_subcommands: bool = True
 
         # Initialize config and data directories
         self._init_config_data()
@@ -61,13 +63,13 @@ class BaseTool(ABC):
         if ":" in path_str and "\\" in path_str:  # Windows path like C:\Users\...
             # Convert C:\Users\... to /c/Users/...
             drive, rest = path_str.split(":", 1)
-            rest_unix = rest.replace('\\', '/')
+            rest_unix = rest.replace("\\", "/")
             unix_path = f"/{drive.lower()}{rest_unix}"
             return unix_path
-        elif path_str.startswith('/'):  # Unix-style path
+        elif path_str.startswith("/"):  # Unix-style path
             return path_str
         else:  # Other paths
-            return path_str.replace('\\', '/')
+            return path_str.replace("\\", "/")
 
     def _is_git_bash(self) -> bool:
         """Detect if running in git bash environment"""
@@ -115,11 +117,12 @@ class BaseTool(ABC):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def _get_yaml(self):
+    def _get_yaml(self) -> "YAML":
         """Get YAML instance, create on demand with lazy import"""
         if self._yaml is None:
             # Lazy import to avoid 55ms startup cost
             from ruamel.yaml import YAML
+
             self._yaml = YAML()
             self._yaml.preserve_quotes = True
             self._yaml.indent(mapping=2, sequence=4, offset=2)
@@ -149,9 +152,7 @@ class BaseTool(ABC):
         default_config = default or {}
 
         if not config_file.exists():
-            output.debug(
-                f"Config file does not exist: {config_file}"
-            )
+            output.debug(f"Config file does not exist: {config_file}")
             return default_config.copy()
 
         try:
@@ -295,7 +296,9 @@ class BaseTool(ABC):
                 else:
                     shutil.rmtree(target_path)
                 output.debug(f"Successfully cleaned data: {target_path}")
-            return not target_path.exists()  # Success if path doesn't exist or was removed
+            return (
+                not target_path.exists()
+            )  # Success if path doesn't exist or was removed
         except Exception as e:
             output.error(f"Failed to clean data: {target_path}, Error: {e}")
             return False  # Any error during cleanup is a failure
@@ -378,7 +381,7 @@ class BaseTool(ABC):
             # Verify restore was successful
             with open(config_file, "r", encoding="utf-8") as f:
                 restored_content = self._get_yaml().load(f)
-            
+
             if backup_content != restored_content:
                 output.error("Config file restore verification failed")
                 return False
@@ -454,6 +457,7 @@ class BaseTool(ABC):
                 main_command.name = tool_name
                 main_command.help = self._get_cli_help()
                 main_command.short_help = self._get_cli_short_help()
+
                 return main_command
             else:
                 # Fallback: create a simple command
