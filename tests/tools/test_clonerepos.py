@@ -8,6 +8,7 @@ from typing import Generator
 import git
 import pytest
 from git import Repo
+from click.testing import CliRunner
 
 from okit.tools.clonerepos import CloneRepos, get_repo_name, read_repo_list
 
@@ -127,3 +128,26 @@ def test_clone_repositories_failure(work_dir: Path) -> None:
     invalid_repo = "https://invalid-url/repo.git"
     tool = CloneRepos("clonerepos")
     tool._clone_repositories([invalid_repo])  # Should handle failure gracefully
+
+
+def test_clonerepos_cli_interface() -> None:
+    """Test command line interface."""
+    runner = CliRunner()
+
+    # Create tool instance and test CLI
+    tool = CloneRepos("clonerepos")
+    cli = tool.create_cli_group()
+
+    # Test help command
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "Batch clone git repositories from a list file" in result.output
+
+    # Test that options are properly displayed
+    assert "--branch" in result.output
+    assert "-b" in result.output
+
+    # Test command help
+    result = runner.invoke(cli, ["clonerepos", "--help"])
+    assert result.exit_code == 0
+    assert "Branch name to clone (optional)" in result.output
