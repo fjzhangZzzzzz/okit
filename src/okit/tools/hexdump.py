@@ -218,15 +218,6 @@ class HexDump(BaseTool):
         """Custom CLI help information"""
         return """
 Hexdump Tool - Display file contents in hexadecimal format
-
-Available formats:
-- canonical: Canonical hex+ASCII display (default)
-- one-byte-hex: One-byte hexadecimal display
-- one-byte-octal: One-byte octal display
-- one-byte-char: One-byte character display
-- two-bytes-decimal: Two-byte decimal display
-- two-bytes-octal: Two-byte octal display
-- two-bytes-hex: Two-byte hexadecimal display
         """.strip()
 
     def _get_cli_short_help(self) -> str:
