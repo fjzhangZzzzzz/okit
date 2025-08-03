@@ -28,7 +28,7 @@ class LazyCommand(click.Command):
         self.help = tool_description or f"{name} tool"
         self.short_help = tool_description or f"{name} tool"
 
-        # 对于 use_subcommands=False 的情况，立即创建真正的命令
+        # 对于简单命令模式，立即创建真正的命令以确保帮助信息正确显示
         if not use_subcommands:
             self._ensure_real_command()
 
@@ -56,9 +56,21 @@ class LazyCommand(click.Command):
             if hasattr(self._real_command, "params"):
                 self.params = self._real_command.params
 
+            # 复制其他重要属性
+            for attr in [
+                "context_class",
+                "context_settings",
+                "ignore_unknown_options",
+                "allow_interspersed_args",
+            ]:
+                if hasattr(self._real_command, attr):
+                    setattr(self, attr, getattr(self._real_command, attr))
+
     def invoke(self, ctx: click.Context) -> Any:
         """重写invoke方法以支持延迟加载"""
-        self._ensure_real_command()
+        # 对于简单命令模式，确保真正的命令已创建
+        if not self.use_subcommands:
+            self._ensure_real_command()
 
         # 如果是真正的命令，直接调用
         if self._real_command:
@@ -67,14 +79,12 @@ class LazyCommand(click.Command):
         return super().invoke(ctx)
 
     def get_help(self, ctx: click.Context) -> str:
-        """获取帮助信息，优先使用缓存的描述，避免工具实例化"""
-        # 确保真正的命令已经创建
-        self._ensure_real_command()
-
-        # 如果真正的命令已经创建，使用它的帮助信息
-        if self._real_command and hasattr(self._real_command, "get_help"):
+        """获取帮助信息，对于简单命令模式返回真正的帮助信息"""
+        # 对于简单命令模式，返回真正的帮助信息
+        if not self.use_subcommands and self._real_command:
             return self._real_command.get_help(ctx)
 
+        # 对于复杂命令模式或未创建真正命令的情况，返回基本描述
         return self.help or f"{self.tool_name} tool"
 
 
