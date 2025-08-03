@@ -55,6 +55,7 @@ class ImportTracker:
         self.external_deps: Dict[str, List[str]] = defaultdict(list)
         self.original_import: Optional[Callable[..., Any]] = None
         self.tracking_enabled = False
+        self._builtin_import_backup: Optional[Callable[..., Any]] = None
         self.okit_modules: Set[str] = set()
 
         # Optimize: pre-compile the module name check for better performance
@@ -74,9 +75,9 @@ class ImportTracker:
         """Start tracking imports"""
         if self.tracking_enabled:
             return
-
         import builtins
 
+        self._builtin_import_backup = builtins.__import__
         self.original_import = builtins.__import__
         builtins.__import__ = self._tracked_import
         self.tracking_enabled = True
@@ -85,11 +86,10 @@ class ImportTracker:
         """Stop tracking imports"""
         if not self.tracking_enabled:
             return
+        import builtins
 
-        if self.original_import:
-            import builtins
-
-            builtins.__import__ = self.original_import
+        if self._builtin_import_backup:
+            builtins.__import__ = self._builtin_import_backup
         self.tracking_enabled = False
 
     def _tracked_import(self, name: str, *args: Any, **kwargs: Any) -> Any:
@@ -107,9 +107,15 @@ class ImportTracker:
             self.import_stack.append(name)
 
         try:
-            if self.original_import is None:
-                raise RuntimeError("original_import is not set")
-            module = self.original_import(name, *args, **kwargs)
+            # Always use the backup builtin import to avoid recursion
+            if self._builtin_import_backup is None:
+                # Fallback to direct builtins access
+                import builtins
+
+                module = builtins.__import__(name, *args, **kwargs)
+            else:
+                module = self._builtin_import_backup(name, *args, **kwargs)
+
             elapsed = time.perf_counter() - start_time
 
             if should_track_okit:
@@ -132,6 +138,11 @@ class ImportTracker:
 
             return module
 
+        except Exception as e:
+            elapsed = time.perf_counter() - start_time
+            if should_track_okit:
+                self.import_times[name] = elapsed
+            raise
         finally:
             if (
                 should_track_okit
@@ -189,8 +200,14 @@ class DecoratorTracker:
 
             # Execute original decorator
             if self.original_okit_tool is None:
-                raise RuntimeError("original_okit_tool is not set")
-            result = self.original_okit_tool(*args, **kwargs)(tool_class)
+                # Return the original class if decorator is not available
+                return tool_class
+
+            try:
+                result = self.original_okit_tool(*args, **kwargs)(tool_class)
+            except Exception:
+                # If original decorator fails, return the original class
+                return tool_class
 
             elapsed = time.perf_counter() - start_time
             class_name = f"{tool_class.__module__}.{tool_class.__name__}"
@@ -253,10 +270,16 @@ class RegistrationTracker:
 
         # Execute original registration
         if self.original_auto_register is None:
-            raise RuntimeError("original_auto_register is not set")
-        result = self.original_auto_register(
-            package, package_path, parent_group, debug_enabled
-        )
+            # Return None if registration is not available
+            return None
+
+        try:
+            result = self.original_auto_register(
+                package, package_path, parent_group, debug_enabled
+            )
+        except Exception:
+            # If original registration fails, return None
+            return None
 
         elapsed = time.perf_counter() - start_time
         self.registration_times[package] = {"total": elapsed}
@@ -450,7 +473,7 @@ def is_monitoring_enabled() -> bool:
 
 def get_monitoring_level() -> str:
     """Get monitoring detail level"""
-    level = os.getenv("OKIT_PERF_MONITOR", "basic")
+    level = os.getenv("OKIT_PERF_LEVEL", "basic")
     if level in ["1", "true", "on"]:
         return "basic"
     return level.lower()
