@@ -825,6 +825,224 @@ pytest --cov=src/okit
 pytest --cov=src/okit --cov-report=html
 ```
 
+### 测试覆盖率
+
+本项目已配置自动生成测试覆盖率报告。
+
+#### 快速开始
+
+```bash
+# 运行所有测试并生成覆盖率报告
+uv run pytest
+
+# 运行特定目录的测试
+uv run pytest tests/utils/
+
+# 运行特定测试文件
+uv run pytest tests/utils/test_perf_monitor.py
+```
+
+#### 查看覆盖率报告
+
+**终端报告**
+覆盖率报告会自动在终端显示，包括：
+- 每个文件的覆盖率百分比
+- 未覆盖的行号
+- 总体覆盖率统计
+
+**HTML报告**
+HTML报告会自动生成到 `htmlcov/` 目录：
+
+```bash
+# 直接打开
+start htmlcov/index.html  # Windows
+open htmlcov/index.html   # macOS
+xdg-open htmlcov/index.html  # Linux
+```
+
+#### 覆盖率报告行为说明
+
+**重要理解**
+
+覆盖率报告显示的是当前测试运行所覆盖的代码，而不是整个项目的覆盖率。
+
+例如：
+- 运行 `uv run pytest tests/utils/` 时，`src/tools/` 目录显示 0% 覆盖率是正常的，因为 `tests/utils/` 的测试不覆盖 `src/tools/` 的代码
+- 运行 `uv run pytest tests/tools/` 时，`src/utils/` 目录可能显示较低的覆盖率，因为 `tests/tools/` 的测试主要覆盖 `src/tools/` 的代码
+- 运行 `uv run pytest`（所有测试）时，显示的是整个项目的真实覆盖率
+
+**查看特定模块的覆盖率**
+
+```bash
+# 只查看 utils 模块的覆盖率
+uv run pytest tests/utils/ --cov=src/okit/utils
+
+# 只查看 tools 模块的覆盖率  
+uv run pytest tests/tools/ --cov=src/okit/tools
+
+# 查看核心模块的覆盖率
+uv run pytest tests/core/ --cov=src/okit/core
+```
+
+#### 覆盖率配置
+
+**当前配置**
+
+在 `pyproject.toml` 中已配置：
+
+```toml
+[tool.pytest.ini_options]
+addopts = [
+    # ... 其他选项
+    "--cov=src/okit",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+
+[tool.coverage.run]
+source = ["src/okit"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/mock*",
+    "*mock*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    # ... 其他排除规则
+]
+```
+
+**覆盖率目标**
+
+- **总体覆盖率**: 目标 80%+
+- **核心模块**: 目标 90%+
+- **工具模块**: 目标 70%+
+
+#### 当前覆盖率状态
+
+**高覆盖率模块 (90%+)**
+- `src/okit/__init__.py` - 100%
+- `src/okit/cli/__init__.py` - 100%
+- `src/okit/cli/main.py` - 100%
+- `src/okit/core/__init__.py` - 100%
+- `src/okit/core/autoreg.py` - 97%
+- `src/okit/core/tool_decorator.py` - 98%
+- `src/okit/utils/log.py` - 94%
+- `src/okit/utils/perf_report.py` - 99%
+
+**需要改进的模块**
+- `src/okit/tools/mobaxterm_pro.py` - 55%
+- `src/okit/tools/shellconfig.py` - 68%
+- `src/okit/utils/version.py` - 35%
+
+#### 提高覆盖率
+
+**1. 识别未覆盖代码**
+使用覆盖率报告识别未测试的代码路径：
+
+```bash
+# 查看详细的未覆盖行
+uv run pytest --cov=src/okit --cov-report=term-missing
+```
+
+**2. 添加测试用例**
+针对未覆盖的代码路径添加测试：
+
+```python
+# 示例：为未覆盖的分支添加测试
+def test_edge_case():
+    """Test edge case that was not covered."""
+    result = function_with_edge_case()
+    assert result is not None
+```
+
+**3. 排除不需要测试的代码**
+对于确实不需要测试的代码，使用 `# pragma: no cover` 注释：
+
+```python
+def debug_function():
+    # pragma: no cover
+    if DEBUG:
+        print("Debug info")
+```
+
+#### 持续集成
+
+**GitHub Actions**
+可以在CI/CD中集成覆盖率检查：
+
+```yaml
+- name: Run tests with coverage
+  run: |
+    uv run pytest --cov=src/okit --cov-report=xml
+    coverage report --fail-under=80
+```
+
+**覆盖率阈值**
+设置覆盖率阈值确保代码质量：
+
+```bash
+# 如果覆盖率低于80%，测试失败
+uv run pytest --cov=src/okit --cov-fail-under=80
+```
+
+#### 覆盖率故障排除
+
+**覆盖率报告不显示**
+1. 确保安装了 `pytest-cov`：
+   ```bash
+   uv add --dev pytest-cov
+   ```
+
+2. 检查配置是否正确：
+   ```bash
+   uv run pytest --help | grep cov
+   ```
+
+**HTML报告不生成**
+1. 检查 `htmlcov/` 目录是否存在
+2. 确保有写入权限
+3. 重新运行测试
+
+**覆盖率数据不准确**
+1. 清理旧的覆盖率数据：
+   ```bash
+   rm -rf htmlcov/
+   rm -f .coverage
+   ```
+
+2. 重新运行测试
+
+**特定目录显示0%覆盖率**
+这是正常行为！覆盖率报告只显示当前测试运行所覆盖的代码。要查看特定模块的真实覆盖率：
+
+```bash
+# 查看 tools 模块的真实覆盖率
+uv run pytest tests/tools/ --cov=src/okit/tools
+
+# 查看 utils 模块的真实覆盖率
+uv run pytest tests/utils/ --cov=src/okit/utils
+
+# 查看整个项目的真实覆盖率
+uv run pytest --cov=src/okit
+```
+
+#### 覆盖率最佳实践
+
+1. **定期检查覆盖率**：每次提交前运行覆盖率检查
+2. **关注核心模块**：优先提高核心功能的覆盖率
+3. **合理排除**：只排除确实不需要测试的代码
+4. **持续改进**：逐步提高覆盖率目标
+5. **理解覆盖率行为**：记住覆盖率报告只显示当前测试运行的结果
+
 ### 编写测试用例
 
 #### 基础测试示例

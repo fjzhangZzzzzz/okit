@@ -1,5 +1,5 @@
 import click
-from typing import Type, Callable, Any, Optional
+from typing import Type, Callable, Any, Optional, List
 from .base_tool import BaseTool
 
 
@@ -149,7 +149,7 @@ class LazyGroup(click.Group):
         self._load_commands()
         return super().get_command(ctx, cmd_name)
 
-    def list_commands(self, ctx: click.Context) -> list[str]:
+    def list_commands(self, ctx: click.Context) -> List[str]:
         """列出命令时才加载真正的group"""
         self._load_commands()
         return super().list_commands(ctx)
