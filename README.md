@@ -12,8 +12,9 @@ okit 包含以下工具：
 | 命令名称 | 用途说明 | 分类 | 文档链接 |
 |---------|---------|------|---------|
 | `gitdiffsync` | Git 项目同步工具，支持 rsync/SFTP 同步变更文件到远程服务器 | 🔧 开发工具 | - |
-| `clonerepos` | 批量克隆 Git 仓库工具 | 🔧 开发工具 | - |
+| `clonerepos` | 批量克隆 Git 仓库工具，支持从列表文件批量克隆仓库 | 🔧 开发工具 | - |
 | `pedump` | PE 文件（EXE/DLL）头信息和节信息解析工具 | 🔧 开发工具 | - |
+| `hexdump` | 十六进制文件查看工具，支持多种格式显示文件内容<br/>• 支持规范格式、十六进制、八进制、字符等多种显示模式<br/>• 类似 Linux hexdump 命令功能 | 🔧 开发工具 | - |
 | `mobaxterm-pro` | MobaXterm Professional 许可证管理工具<br/>• 自动探测系统中安装的 MobaXterm 信息<br/>• 生成 Custom.mxtpro 许可证文件<br/>• 一键部署许可证文件到安装目录 | 🔐 安全工具 | [使用文档](docs/mobaxterm_pro_usage.md) |
 | `shellconfig` | Shell 配置管理工具<br/>• 同步 Shell 配置文件<br/>• 管理配置状态<br/>• 备份和恢复配置 | ⚙️ 配置工具 | - |
 | `minimal` | 最小化示例工具，展示工具开发模式 | 📚 示例工具 | - |
