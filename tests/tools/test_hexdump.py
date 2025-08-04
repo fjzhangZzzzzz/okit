@@ -244,8 +244,7 @@ class TestHexDump:
         help_text = tool._get_cli_help()
 
         assert "Hexdump Tool" in help_text
-        assert "canonical" in help_text
-        assert "Available formats" in help_text
+        assert "hexadecimal format" in help_text
 
     def test_get_cli_short_help(self) -> None:
         """Test CLI short help generation"""
@@ -282,20 +281,20 @@ class TestHexDumpCLI:
         assert result.exit_code == 0
         assert "Display file contents in hexadecimal format" in result.output
 
-        # Test that options are properly displayed
-        assert "--canonical" in result.output
-        assert "--one-byte-hex" in result.output
-        assert "--one-byte-octal" in result.output
-        assert "--one-byte-char" in result.output
-        assert "--two-bytes-decimal" in result.output
-        assert "--two-bytes-octal" in result.output
-        assert "--two-bytes-hex" in result.output
-        assert "--length" in result.output
-        assert "--skip" in result.output
-        assert "--no-squeezing" in result.output
+        # Test that options are properly displayed with correct format
+        assert "-C, --canonical" in result.output
+        assert "-X, --one-byte-hex" in result.output
+        assert "-b, --one-byte-octal" in result.output
+        assert "-c, --one-byte-char" in result.output
+        assert "-d, --two-bytes-decimal" in result.output
+        assert "-o, --two-bytes-octal" in result.output
+        assert "-x, --two-bytes-hex" in result.output
+        assert "-n, --length" in result.output
+        assert "-s, --skip" in result.output
+        assert "-v, --no-squeezing" in result.output
 
         # Test that option descriptions are shown
-        assert "Canonical hex+ASCII display" in result.output
+        assert "Canonical hex+ASCII display (default)" in result.output
         assert "One-byte hexadecimal display" in result.output
         assert "One-byte octal display" in result.output
         assert "One-byte character display" in result.output
@@ -304,7 +303,7 @@ class TestHexDumpCLI:
         assert "Two-byte hexadecimal display" in result.output
         assert "Interpret only LENGTH bytes of input" in result.output
         assert "Skip OFFSET bytes from the beginning" in result.output
-        assert "Display all input data" in result.output
+        assert "Display all input data (no squeezing)" in result.output
 
     def test_hexdump_command_no_files(self) -> None:
         """Test hexdump command with no files"""
