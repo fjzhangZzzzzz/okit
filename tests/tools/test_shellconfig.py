@@ -219,6 +219,9 @@ def test_enable_config(shell_tool, mock_output, mock_home):
     result = shell_tool.enable_config("bash")
     assert result is True
     mock_output.success.assert_any_call("Configuration enabled for bash")
+    
+    # Clean up after test
+    shell_tool.disable_config("bash")
 
 
 def test_disable_config(shell_tool, mock_output, mock_home):
@@ -232,7 +235,7 @@ def test_disable_config(shell_tool, mock_output, mock_home):
     mock_output.success.assert_called_with("Configuration disabled for bash")
 
 
-def test_check_config_status(shell_tool, mock_home):
+def test_check_config_status(shell_tool, mock_home, mock_output):
     """Test configuration status check."""
     # Test disabled config
     assert not shell_tool.check_config_status("bash")
@@ -240,6 +243,9 @@ def test_check_config_status(shell_tool, mock_home):
     # Enable config and test again
     shell_tool.enable_config("bash")
     assert shell_tool.check_config_status("bash")
+    
+    # Clean up after test
+    shell_tool.disable_config("bash")
 
 
 def test_cli_config_command(shell_tool, cli_runner, mock_output):
