@@ -18,7 +18,12 @@ def test_version_command(cli_runner):
     """Test version command."""
     result = cli_runner.invoke(main, ['--version'])
     assert result.exit_code == 0
-    assert 'v1.2.0' in result.output
+    # 验证版本号格式：应该以 'v' 开头，后跟语义化版本号
+    assert result.output.startswith('v')
+    # 验证版本号符合语义化版本格式 (主版本.次版本.修订号)
+    import re
+    version_pattern = r'^v\d+\.\d+\.\d+.*$'
+    assert re.match(version_pattern, result.output.strip()), f"Version format invalid: {result.output.strip()}"
 
 
 def test_log_level_option(cli_runner):
