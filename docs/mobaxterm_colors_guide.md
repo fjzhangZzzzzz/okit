@@ -61,6 +61,11 @@ okit mobaxterm-colors list --limit 50
 okit mobaxterm-colors apply --scheme "Dracula"
 okit mobaxterm-colors apply --scheme "Solarized Dark" --force
 okit mobaxterm-colors apply --scheme "Monokai" --no-backup
+
+# 配置管理
+okit mobaxterm-colors config auto-update true
+okit mobaxterm-colors config --list
+okit mobaxterm-colors config --unset auto-update
 ```
 
 ### 详细使用示例
@@ -118,6 +123,51 @@ okit mobaxterm-colors cache --clean
 
 # 查看缓存状态
 okit mobaxterm-colors cache
+```
+
+#### 5. 配置管理
+
+工具采用类似 `git config` 的设计，提供灵活的配置管理功能：
+
+```bash
+# 设置配置值
+okit mobaxterm-colors config auto-update true
+okit mobaxterm-colors config mobaxterm_config_path "/custom/path/MobaXterm.ini"
+
+# 获取配置值
+okit mobaxterm-colors config auto-update
+
+# 列出所有配置
+okit mobaxterm-colors config --list
+
+# 取消设置配置
+okit mobaxterm-colors config --unset auto-update
+```
+
+**支持的配置项：**
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `auto_update` | bool | false | 是否启用自动更新缓存 |
+| `mobaxterm_config_path` | string | null | 自定义 MobaXterm.ini 路径 |
+
+**数据类型支持：**
+
+- **布尔值**：自动识别 `true`/`false`（不区分大小写）
+- **字符串值**：所有其他值都作为字符串处理
+
+**使用示例：**
+
+```bash
+# 完整配置管理流程
+okit mobaxterm-colors config --list                    # 查看当前配置
+okit mobaxterm-colors config auto-update true         # 启用自动更新
+okit mobaxterm-colors config auto-update              # 验证设置
+okit mobaxterm-colors config --unset auto-update      # 取消设置
+
+# 设置自定义配置
+okit mobaxterm-colors config custom_setting "value"
+okit mobaxterm-colors config debug_mode true
 ```
 
 ## 配置文件探测
@@ -197,7 +247,7 @@ okit mobaxterm_colors apply --scheme "Dracula"
 - 确认 MobaXterm 已安装
 - 手动指定配置文件路径：
   ```bash
-  okit mobaxterm_colors config --set mobaxterm_config_path "C:/path/to/MobaXterm.ini"
+  okit mobaxterm-colors config mobaxterm_config_path "C:/path/to/MobaXterm.ini"
   ```
 
 #### 2. 配色方案未找到
@@ -236,7 +286,7 @@ okit mobaxterm_colors apply --scheme "Dracula"
 
 ```bash
 # 设置本地仓库路径
-okit mobaxterm-colors config --set local_repo_path "C:/path/to/iterm2-color-schemes"
+okit mobaxterm-colors config local_repo_path "C:/path/to/iterm2-color-schemes"
 ```
 
 ### 自动更新配置
@@ -245,10 +295,13 @@ okit mobaxterm-colors config --set local_repo_path "C:/path/to/iterm2-color-sche
 
 ```bash
 # 启用自动更新
-okit mobaxterm-colors config --set auto_update true
+okit mobaxterm-colors config auto_update true
 
 # 禁用自动更新
-okit mobaxterm-colors config --set auto_update false
+okit mobaxterm-colors config auto_update false
+
+# 查看当前设置
+okit mobaxterm-colors config auto_update
 ```
 
 ## 性能优化
@@ -367,7 +420,124 @@ okit mobaxterm-colors cache --help
 2. 在 `mobaxterm` 目录添加 `.mobaxterm` 文件
 3. 提交 Pull Request
 
+## 配置管理详解
+
+### Config 命令设计
+
+工具的 `config` 命令采用类似 `git config` 的设计，提供通用和灵活的配置管理功能。
+
+#### 命令格式
+
+```bash
+okit mobaxterm-colors config [key] [value] [options]
+```
+
+#### 与 Git Config 的对比
+
+| 功能 | Git Config | MobaXterm Colors Config |
+|------|------------|-------------------------|
+| 设置配置 | `git config key value` | `okit mobaxterm-colors config key value` |
+| 获取配置 | `git config key` | `okit mobaxterm-colors config key` |
+| 列出配置 | `git config --list` | `okit mobaxterm-colors config --list` |
+| 取消设置 | `git config --unset key` | `okit mobaxterm-colors config --unset key` |
+
+#### 高级用法
+
+**批量设置配置：**
+
+```bash
+# 使用脚本批量设置
+cat > setup_config.sh << 'EOF'
+#!/bin/bash
+okit mobaxterm-colors config auto_update true
+okit mobaxterm-colors config debug_mode false
+okit mobaxterm-colors config custom_path "/home/user/custom"
+EOF
+
+chmod +x setup_config.sh
+./setup_config.sh
+```
+
+**配置验证：**
+
+```bash
+# 验证关键配置项
+required_configs=("auto_update" "mobaxterm_config_path")
+for config in "${required_configs[@]}"; do
+    value=$(okit mobaxterm-colors config "$config" 2>/dev/null)
+    if [ -z "$value" ]; then
+        echo "Missing required config: $config"
+    fi
+done
+```
+
+**备份配置：**
+
+```bash
+# 导出配置到文件
+okit mobaxterm-colors config --list > mobaxterm_config_backup.txt
+
+# 从文件恢复配置
+while IFS=':' read -r key value; do
+    if [[ $key && $value ]]; then
+        okit mobaxterm-colors config "$key" "$value"
+    fi
+done < mobaxterm_config_backup.txt
+```
+
+#### 错误处理
+
+**常见错误：**
+
+1. **配置项不存在**
+   ```bash
+   $ okit mobaxterm-colors config nonexistent_key
+   ⚠ Configuration key 'nonexistent_key' not found
+   ```
+
+2. **取消设置不存在的配置项**
+   ```bash
+   $ okit mobaxterm-colors config --unset nonexistent_key
+   ⚠ Configuration key 'nonexistent_key' not found
+   ```
+
+#### 最佳实践
+
+1. **使用有意义的配置项名称**
+   ```bash
+   # 好的命名
+   okit mobaxterm-colors config auto_update true
+   okit mobaxterm-colors config custom_config_path "/path/to/config"
+   
+   # 避免的命名
+   okit mobaxterm-colors config x true
+   okit mobaxterm-colors config path "/path"
+   ```
+
+2. **定期清理不需要的配置**
+   ```bash
+   # 查看所有配置
+   okit mobaxterm-colors config --list
+   
+   # 清理不需要的配置
+   okit mobaxterm-colors config --unset unused_setting
+   ```
+
+3. **配置文件位置**
+   
+   配置文件存储在：
+   ```
+   ~/.okit/config/mobaxterm-colors/config.yaml
+   ```
+
 ## 更新日志
+
+### v1.1.0
+- 改进配置管理功能，采用类似 git config 的设计
+- 支持 key-value 格式设置配置
+- 添加 --list 和 --unset 选项
+- 自动转换布尔值 (true/false)
+- 改进缓存验证和自动初始化机制
 
 ### v1.0.0
 - 初始版本发布

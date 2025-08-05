@@ -42,6 +42,32 @@ class MobaXtermColors(BaseTool):
         super().__init__(tool_name, description)
         self._ensure_cache_dir()
         self.detector = MobaXtermDetector()
+        
+        # Auto-initialize cache if needed
+        self._auto_init_cache()
+    
+    def _auto_init_cache(self):
+        """Auto-initialize cache if it doesn't exist or is invalid"""
+        cache_path = self._get_cache_path()
+        
+        # Check if auto-update is enabled
+        auto_update = self.get_config_value("auto_update", False)
+        
+        if not cache_path.exists():
+            if auto_update:
+                output.info("Auto-initializing cache...")
+                self._update_cache()
+            else:
+                output.debug("Cache not found, auto-update disabled")
+            return
+        
+        # Check if existing cache is valid
+        if not self._is_valid_git_repo(cache_path):
+            if auto_update:
+                output.warning("Cache exists but is invalid. Auto-reinitializing...")
+                self._update_cache()
+            else:
+                output.debug("Cache exists but is invalid, auto-update disabled")
     
     def _ensure_cache_dir(self):
         """Ensure cache directory exists"""
@@ -69,12 +95,15 @@ class MobaXtermColors(BaseTool):
         @cli_group.command()
         @click.option('--update', is_flag=True, help='Update local cache')
         @click.option('--clean', is_flag=True, help='Clean local cache')
-        def cache(update: bool, clean: bool):
+        @click.option('--sync', is_flag=True, help='Sync cache (update if needed)')
+        def cache(update: bool, clean: bool, sync: bool):
             """Manage local cache"""
             if update:
                 self._update_cache()
             elif clean:
                 self._clean_cache()
+            elif sync:
+                self._sync_cache()
             else:
                 self._show_cache_status()
         
@@ -82,6 +111,70 @@ class MobaXtermColors(BaseTool):
         def status():
             """Show current status and configuration"""
             self._show_status()
+        
+        @cli_group.command()
+        @click.argument('key', required=False)
+        @click.argument('value', required=False)
+        @click.option('--list', 'list_config', is_flag=True, help='List all configuration')
+        @click.option('--unset', help='Unset a configuration key')
+        def config(key: Optional[str], value: Optional[str], list_config: bool, unset: str):
+            """Configure tool settings (similar to git config)
+            
+            Examples:
+              okit mobaxterm-colors config auto-update true
+              okit mobaxterm-colors config mobaxterm_config_path /path/to/config.ini
+              okit mobaxterm-colors config --list
+              okit mobaxterm-colors config --unset auto-update
+            """
+            if list_config:
+                self._list_config()
+            elif unset:
+                self._unset_config(unset)
+            elif key and value is not None:
+                self._set_config(key, value)
+            elif key:
+                self._get_config(key)
+            else:
+                self._list_config()
+    
+    def _set_config(self, key: str, value: str):
+        """Set a configuration value"""
+        # Convert string values to appropriate types
+        if value.lower() in ('true', 'false'):
+            bool_value = value.lower() == 'true'
+            self.set_config_value(key, bool_value)
+            output.success(f"Set {key} = {bool_value}")
+        else:
+            self.set_config_value(key, value)
+            output.success(f"Set {key} = {value}")
+    
+    def _get_config(self, key: str):
+        """Get a configuration value"""
+        value = self.get_config_value(key)
+        if value is not None:
+            output.result(f"{key}: {value}")
+        else:
+            output.warning(f"Configuration key '{key}' not found")
+    
+    def _unset_config(self, key: str):
+        """Unset a configuration value"""
+        config_data = self.load_config()
+        if key in config_data:
+            del config_data[key]
+            self.save_config(config_data)
+            output.success(f"Unset {key}")
+        else:
+            output.warning(f"Configuration key '{key}' not found")
+    
+    def _list_config(self):
+        """List all configuration"""
+        config_data = self.load_config()
+        if config_data:
+            output.info("Configuration:")
+            for key, value in sorted(config_data.items()):
+                output.result(f"  {key}: {value}")
+        else:
+            output.info("No configuration found")
     
     def _get_mobaxterm_config_path(self) -> Optional[Path]:
         """Auto-detect MobaXterm.ini configuration file path"""
@@ -133,24 +226,41 @@ class MobaXtermColors(BaseTool):
         cache_path = self._get_cache_path()
         
         try:
-            if cache_path.exists():
-                output.info("Updating existing cache...")
-                # Use git to update existing repository
-                import git
-                repo = git.Repo(cache_path)
-                origin = repo.remotes.origin
-                origin.pull()
-                output.success("Cache updated successfully")
-            else:
-                output.info("Cloning repository to cache...")
-                # Clone repository
-                import git
-                git.Repo.clone_from(self.REPO_URL, cache_path)
-                output.success("Cache created successfully")
-                
+            import git
         except ImportError:
             output.error("gitpython is required for cache operations. Install with: pip install gitpython")
             return
+        
+        try:
+            if cache_path.exists():
+                # Check if it's a valid git repository
+                try:
+                    repo = git.Repo(cache_path)
+                    # Verify it's the correct repository
+                    origin_url = repo.remotes.origin.url
+                    if self.REPO_URL not in origin_url:
+                        output.warning("Cache directory exists but is not the correct repository")
+                        output.info("Removing existing cache and re-cloning...")
+                        shutil.rmtree(cache_path)
+                        git.Repo.clone_from(self.REPO_URL, cache_path)
+                        output.success("Cache recreated successfully")
+                    else:
+                        output.info("Updating existing cache...")
+                        origin = repo.remotes.origin
+                        origin.pull()
+                        output.success("Cache updated successfully")
+                except (git.InvalidGitRepositoryError, AttributeError):
+                    # Not a git repository or missing origin
+                    output.warning("Cache directory exists but is not a valid git repository")
+                    output.info("Removing existing cache and re-cloning...")
+                    shutil.rmtree(cache_path)
+                    git.Repo.clone_from(self.REPO_URL, cache_path)
+                    output.success("Cache recreated successfully")
+            else:
+                output.info("Cloning repository to cache...")
+                git.Repo.clone_from(self.REPO_URL, cache_path)
+                output.success("Cache created successfully")
+                
         except Exception as e:
             output.error(f"Failed to update cache: {e}")
             return
@@ -164,6 +274,55 @@ class MobaXtermColors(BaseTool):
         else:
             output.info("Cache is already clean")
     
+    def _sync_cache(self):
+        """Sync cache - update if needed or initialize if missing"""
+        cache_path = self._get_cache_path()
+        
+        if not cache_path.exists():
+            output.info("Cache not found. Initializing...")
+            self._update_cache()
+            return
+        
+        if not self._is_valid_git_repo(cache_path):
+            output.warning("Cache exists but is not a valid git repository. Reinitializing...")
+            self._update_cache()
+            return
+        
+        # Check if update is needed
+        try:
+            import git
+            repo = git.Repo(cache_path)
+            origin = repo.remotes.origin
+            
+            # Fetch latest changes
+            origin.fetch()
+            
+            # Check if local is behind remote
+            local_commit = repo.head.commit
+            remote_commit = repo.refs['origin/main'].commit
+            
+            if local_commit.hexsha != remote_commit.hexsha:
+                output.info("Updates available. Pulling latest changes...")
+                origin.pull()
+                output.success("Cache synchronized successfully")
+            else:
+                output.success("Cache is already up to date")
+                
+        except Exception as e:
+            output.error(f"Failed to sync cache: {e}")
+            output.info("Attempting to reinitialize cache...")
+            self._update_cache()
+    
+    def _is_valid_git_repo(self, path: Path) -> bool:
+        """Check if path is a valid git repository for the expected repo"""
+        try:
+            import git
+            repo = git.Repo(path)
+            origin_url = repo.remotes.origin.url
+            return self.REPO_URL in origin_url
+        except (git.InvalidGitRepositoryError, AttributeError, ImportError):
+            return False
+    
     def _show_cache_status(self):
         """Show cache status"""
         cache_path = self._get_cache_path()
@@ -173,14 +332,17 @@ class MobaXtermColors(BaseTool):
             output.info("Cache: Not available")
             return
         
+        # Check if it's a valid git repository
+        is_valid_repo = self._is_valid_git_repo(cache_path)
+        
         # Count available schemes
         scheme_count = 0
         if mobaxterm_dir.exists():
-            scheme_count = len(list(mobaxterm_dir.glob("*.mobaxterm")))
+            scheme_count = len(list(mobaxterm_dir.glob("*.ini")))
         
         # Get last update time
         last_update = "Unknown"
-        if cache_path.exists():
+        if is_valid_repo:
             try:
                 import git
                 repo = git.Repo(cache_path)
@@ -191,8 +353,13 @@ class MobaXtermColors(BaseTool):
         
         output.info("Cache Status:")
         output.result(f"  Cache Path: {cache_path}")
+        output.result(f"  Valid Git Repo: {'Yes' if is_valid_repo else 'No'}")
         output.result(f"  Available Schemes: {scheme_count}")
         output.result(f"  Last Update: {last_update}")
+        
+        if not is_valid_repo:
+            output.warning("Cache directory exists but is not a valid git repository")
+            output.info("Run 'okit mobaxterm-colors cache --update' to fix this")
     
     def _list_schemes(self, search: Optional[str] = None, limit: int = 20):
         """List available color schemes"""
@@ -200,11 +367,16 @@ class MobaXtermColors(BaseTool):
         mobaxterm_dir = cache_path / self.MOBAXTERM_DIR
         
         if not mobaxterm_dir.exists():
-            output.error("Cache not available. Run 'okit mobaxterm-colors cache --update' first")
-            return
+            output.warning("Cache not available. Attempting to initialize cache...")
+            self._update_cache()
+            
+            # Check again after update attempt
+            if not mobaxterm_dir.exists():
+                output.error("Failed to initialize cache. Please run 'okit mobaxterm-colors cache --update' manually")
+                return
         
-        # Find all .mobaxterm files
-        scheme_files = list(mobaxterm_dir.glob("*.mobaxterm"))
+        # Find all .ini files
+        scheme_files = list(mobaxterm_dir.glob("*.ini"))
         
         if search:
             scheme_files = [f for f in scheme_files if search.lower() in f.stem.lower()]
@@ -222,7 +394,7 @@ class MobaXtermColors(BaseTool):
             output.result(f"  {scheme_file.stem} ({scheme_file.name})")
     
     def _parse_mobaxterm_scheme(self, scheme_path: Path) -> Dict[str, str]:
-        """Parse .mobaxterm file and extract color values"""
+        """Parse .ini file and extract color values"""
         colors = {}
         
         try:
@@ -289,13 +461,19 @@ class MobaXtermColors(BaseTool):
         
         # Check if scheme exists in cache
         cache_path = self._get_cache_path()
-        scheme_file = cache_path / self.MOBAXTERM_DIR / f"{scheme_name}.mobaxterm"
+        scheme_file = cache_path / self.MOBAXTERM_DIR / f"{scheme_name}.ini"
         
         if not scheme_file.exists():
-            output.error(f"Color scheme '{scheme_name}' not found in cache")
-            output.info("Available schemes:")
-            self._list_schemes(limit=10)
-            return
+            output.warning(f"Color scheme '{scheme_name}' not found in cache")
+            output.info("Attempting to update cache and search again...")
+            self._update_cache()
+            
+            # Check again after update
+            if not scheme_file.exists():
+                output.error(f"Color scheme '{scheme_name}' not found after cache update")
+                output.info("Available schemes:")
+                self._list_schemes(limit=10)
+                return
         
         # Parse color scheme
         colors = self._parse_mobaxterm_scheme(scheme_file)
@@ -354,6 +532,7 @@ class MobaXtermColors(BaseTool):
         # Cache status
         cache_path = self._get_cache_path()
         cache_exists = cache_path.exists()
+        is_valid_repo = self._is_valid_git_repo(cache_path) if cache_exists else False
         
         # Local repository path
         local_repo_path = self.get_config_value("local_repo_path")
@@ -366,12 +545,20 @@ class MobaXtermColors(BaseTool):
         output.result(f"  Config Exists: {'Yes' if config_exists else 'No'}")
         output.result(f"  Cache Path: {cache_path}")
         output.result(f"  Cache Exists: {'Yes' if cache_exists else 'No'}")
+        output.result(f"  Valid Git Repo: {'Yes' if is_valid_repo else 'No'}")
         output.result(f"  Local Repo Path: {local_repo_path or 'Not set'}")
         output.result(f"  Auto Update: {'Enabled' if auto_update else 'Disabled'}")
         
         # Show available schemes count
-        if cache_exists:
+        if cache_exists and is_valid_repo:
             mobaxterm_dir = cache_path / self.MOBAXTERM_DIR
             if mobaxterm_dir.exists():
-                scheme_count = len(list(mobaxterm_dir.glob("*.mobaxterm")))
-                output.info(f"Available color schemes: {scheme_count}") 
+                scheme_count = len(list(mobaxterm_dir.glob("*.ini")))
+                output.info(f"Available color schemes: {scheme_count}")
+        
+        # Show cache recommendations
+        if cache_exists and not is_valid_repo:
+            output.warning("Cache exists but is not a valid git repository")
+            output.info("Run 'okit mobaxterm-colors cache --sync' to fix this")
+        elif not cache_exists:
+            output.info("Cache not initialized. Run 'okit mobaxterm-colors cache --sync' to initialize") 

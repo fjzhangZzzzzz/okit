@@ -44,8 +44,8 @@ class TestMobaXtermColors:
     
     @pytest.fixture
     def mock_scheme_file(self, temp_dir):
-        """Create mock .mobaxterm scheme file"""
-        scheme_file = temp_dir / "test_scheme.mobaxterm"
+        """Create mock .ini scheme file"""
+        scheme_file = temp_dir / "test_scheme.ini"
         scheme_content = """Color0=0,0,0
 Color1=255,255,255
 Color2=128,128,128
@@ -136,7 +136,7 @@ Color3=192,192,192"""
             assert result is not None  # Should return default path
     
     def test_parse_mobaxterm_scheme(self, tool, mock_scheme_file):
-        """Test parsing .mobaxterm scheme file"""
+        """Test parsing .ini scheme file"""
         colors = tool._parse_mobaxterm_scheme(mock_scheme_file)
         
         expected = {
@@ -149,8 +149,8 @@ Color3=192,192,192"""
         assert colors == expected
     
     def test_parse_mobaxterm_scheme_invalid(self, tool, temp_dir):
-        """Test parsing invalid .mobaxterm scheme file"""
-        invalid_file = temp_dir / "invalid.mobaxterm"
+        """Test parsing invalid .ini scheme file"""
+        invalid_file = temp_dir / "invalid.ini"
         with open(invalid_file, 'w') as f:
             f.write("Invalid content")
         
@@ -158,16 +158,16 @@ Color3=192,192,192"""
         assert colors == {}
     
     def test_parse_mobaxterm_scheme_empty(self, tool, temp_dir):
-        """Test parsing empty .mobaxterm scheme file"""
-        empty_file = temp_dir / "empty.mobaxterm"
+        """Test parsing empty .ini scheme file"""
+        empty_file = temp_dir / "empty.ini"
         empty_file.touch()
         
         colors = tool._parse_mobaxterm_scheme(empty_file)
         assert colors == {}
     
     def test_parse_mobaxterm_scheme_malformed(self, tool, temp_dir):
-        """Test parsing malformed .mobaxterm scheme file"""
-        malformed_file = temp_dir / "malformed.mobaxterm"
+        """Test parsing malformed .ini scheme file"""
+        malformed_file = temp_dir / "malformed.ini"
         with open(malformed_file, 'w') as f:
             f.write("Color0=invalid\nColor1=255,255\nColor2=128,128,128,extra")
         
@@ -334,7 +334,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Create some mock scheme files
-        schemes = ["scheme1.mobaxterm", "scheme2.mobaxterm", "dark_scheme.mobaxterm"]
+        schemes = ["scheme1.ini", "scheme2.ini", "dark_scheme.ini"]
         for scheme in schemes:
             (mobaxterm_dir / scheme).touch()
         
@@ -354,7 +354,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Create some mock scheme files
-        schemes = ["scheme1.mobaxterm", "scheme2.mobaxterm"]
+        schemes = ["scheme1.ini", "scheme2.ini"]
         for scheme in schemes:
             (mobaxterm_dir / scheme).touch()
         
@@ -378,7 +378,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Create some mock scheme files
-        schemes = ["scheme1.mobaxterm", "scheme2.mobaxterm"]
+        schemes = ["scheme1.ini", "scheme2.ini"]
         for scheme in schemes:
             (mobaxterm_dir / scheme).touch()
         
@@ -392,7 +392,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Create some mock scheme files
-        schemes = ["scheme1.mobaxterm", "scheme2.mobaxterm"]
+        schemes = ["scheme1.ini", "scheme2.ini"]
         for scheme in schemes:
             (mobaxterm_dir / scheme).touch()
         
@@ -416,7 +416,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Copy scheme file to cache
-        shutil.copy(mock_scheme_file, mobaxterm_dir / "test_scheme.mobaxterm")
+        shutil.copy(mock_scheme_file, mobaxterm_dir / "test_scheme.ini")
         
         with patch.object(tool, '_get_mobaxterm_config_path') as mock_get_config:
             mock_get_config.return_value = mock_config_file
@@ -443,7 +443,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Create invalid scheme file
-        invalid_scheme = mobaxterm_dir / "invalid_scheme.mobaxterm"
+        invalid_scheme = mobaxterm_dir / "invalid_scheme.ini"
         with open(invalid_scheme, 'w') as f:
             f.write("Invalid content")
         
@@ -460,7 +460,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Copy scheme file to cache
-        shutil.copy(mock_scheme_file, mobaxterm_dir / "test_scheme.mobaxterm")
+        shutil.copy(mock_scheme_file, mobaxterm_dir / "test_scheme.ini")
         
         with patch.object(tool, '_get_mobaxterm_config_path') as mock_get_config:
             mock_get_config.return_value = mock_config_file
@@ -482,7 +482,7 @@ Color3=192,192,192"""
         mobaxterm_dir.mkdir(parents=True, exist_ok=True)
         
         # Copy scheme file to cache
-        shutil.copy(mock_scheme_file, mobaxterm_dir / "test_scheme.mobaxterm")
+        shutil.copy(mock_scheme_file, mobaxterm_dir / "test_scheme.ini")
         
         with patch.object(tool, '_get_mobaxterm_config_path') as mock_get_config:
             mock_get_config.return_value = mock_config_file
