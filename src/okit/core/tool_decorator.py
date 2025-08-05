@@ -138,10 +138,10 @@ class LazyGroup(click.Group):
         """重写invoke方法"""
         self._ensure_real_group()
 
-        # 如果有callback，调用它
-        if self.callback:
-            return ctx.invoke(self.callback, **ctx.params)
-
+        # 确保命令被正确加载
+        self._load_commands()
+        
+        # 调用父类的invoke方法，让Click处理子命令
         return super().invoke(ctx)
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
