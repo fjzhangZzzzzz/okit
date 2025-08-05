@@ -463,7 +463,29 @@ class _StdoutConsole:
         sep = kwargs.get("sep", " ")
         end = kwargs.get("end", "\n")
         file = kwargs.get("file", sys.stdout)
-        print(*clean_args, sep=sep, end=end, file=file)
+        
+        # 处理编码问题
+        try:
+            print(*clean_args, sep=sep, end=end, file=file)
+        except UnicodeEncodeError:
+            # 如果遇到编码错误，尝试使用 UTF-8 编码
+            try:
+                # 重新配置 stdout 为 UTF-8
+                import codecs
+                if hasattr(sys.stdout, 'reconfigure'):
+                    sys.stdout.reconfigure(encoding='utf-8')
+                print(*clean_args, sep=sep, end=end, file=file)
+            except Exception:
+                # 最后的回退：移除所有 Unicode 字符
+                safe_args = []
+                for arg in clean_args:
+                    if isinstance(arg, str):
+                        # 移除所有非 ASCII 字符
+                        safe_arg = ''.join(c for c in arg if ord(c) < 128)
+                        safe_args.append(safe_arg)
+                    else:
+                        safe_args.append(arg)
+                print(*safe_args, sep=sep, end=end, file=file)
 
 
 class CommandNameFilter(logging.Filter):

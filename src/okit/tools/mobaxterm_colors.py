@@ -38,8 +38,8 @@ class MobaXtermColors(BaseTool):
     REPO_URL = "https://github.com/mbadolato/iTerm2-Color-Schemes"
     MOBAXTERM_DIR = "mobaxterm"
     
-    def __init__(self):
-        super().__init__("mobaxterm-colors", "MobaXterm color scheme management tool")
+    def __init__(self, tool_name: str = "mobaxterm-colors", description: str = "MobaXterm color scheme management tool"):
+        super().__init__(tool_name, description)
         self._ensure_cache_dir()
         self.detector = MobaXtermDetector()
     
