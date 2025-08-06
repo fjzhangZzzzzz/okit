@@ -152,12 +152,16 @@ def test_lazy_group_invoke():
     group = LazyGroup("test", MockToolWithCallback, "Test tool")
     ctx = click.Context(group)
 
-    # Mock real group invoke
-    with patch.object(group, "_ensure_real_group") as mock_ensure:
+    # Mock both _ensure_real_group and _load_commands to avoid real tool instantiation
+    with patch.object(group, "_ensure_real_group") as mock_ensure, \
+         patch.object(group, "_load_commands") as mock_load:
         group.callback = MagicMock()
-        group.invoke(ctx)
-        mock_ensure.assert_called_once()
-        group.callback.assert_called_once()
+        # Mock super().invoke() to avoid Click's command validation
+        with patch.object(click.Group, "invoke") as mock_super_invoke:
+            group.invoke(ctx)
+            mock_ensure.assert_called_once()
+            mock_load.assert_called_once()
+            mock_super_invoke.assert_called_once_with(ctx)
 
 
 def test_lazy_group_get_command():
