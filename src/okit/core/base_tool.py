@@ -242,6 +242,40 @@ class BaseTool(ABC):
 
         return self.save_config(config)
 
+    def unset_config_value(self, key: str) -> bool:
+        """
+        Unset (remove) configuration value
+
+        Args:
+            key: Configuration key, supports dot-separated nested keys
+
+        Returns:
+            bool: Whether unsetting was successful
+        """
+        config = self.load_config()
+
+        # Handle nested keys
+        keys = key.split(".")
+        current = config
+
+        try:
+            # Navigate to the parent of the target key
+            for k in keys[:-1]:
+                if k not in current or not isinstance(current[k], dict):
+                    return True  # Key doesn't exist, consider it already unset
+                current = current[k]
+
+            # Remove the target key
+            if keys[-1] in current:
+                del current[keys[-1]]
+                return self.save_config(config)
+            else:
+                return True  # Key doesn't exist, consider it already unset
+
+        except Exception as e:
+            output.error(f"Failed to unset config value '{key}': {e}")
+            return False
+
     def has_config(self) -> bool:
         """Check if configuration file exists"""
         return self.get_config_file().exists()

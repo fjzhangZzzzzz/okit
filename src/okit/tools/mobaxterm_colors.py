@@ -402,14 +402,15 @@ class MobaXtermColors(BaseTool):
                 content = f.read()
             
             # Parse color values using regex
-            # Format: Color0=0,0,0 (RGB values)
-            color_pattern = r'Color(\d+)=(\d+),(\d+),(\d+)'
+            # Only support the exact color names used in MobaXterm.ini
+            # Format: ColorName=R,G,B
+            color_pattern = r'(Black|Red|Green|Yellow|Blue|Magenta|Cyan|White|BoldBlack|BoldRed|BoldGreen|BoldYellow|BoldBlue|BoldMagenta|BoldCyan|BoldWhite|ForegroundColour|BackgroundColour|CursorColour)=(\d+),(\d+),(\d+)'
             matches = re.findall(color_pattern, content)
             
             for match in matches:
-                color_index = match[0]
+                color_name = match[0]
                 r, g, b = match[1], match[2], match[3]
-                colors[f"Color{color_index}"] = f"{r},{g},{b}"
+                colors[color_name] = f"{r},{g},{b}"
             
             return colors
             
@@ -419,10 +420,21 @@ class MobaXtermColors(BaseTool):
     
     def _read_mobaxterm_config(self, config_path: Path) -> configparser.ConfigParser:
         """Read MobaXterm.ini configuration file"""
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(allow_no_value=True, strict=False)
+        # Keep original case for option names
+        config.optionxform = str
         
         if config_path.exists():
-            config.read(config_path, encoding='utf-8')
+            try:
+                config.read(config_path, encoding='utf-8')
+            except configparser.DuplicateOptionError as e:
+                output.warning(f"Duplicate option found in config file: {e}")
+                # Try to read with more lenient settings
+                config = configparser.ConfigParser(allow_no_value=True, strict=False, empty_lines_in_values=False)
+                config.optionxform = str
+                config.read(config_path, encoding='utf-8')
+            except Exception as e:
+                output.error(f"Failed to read config file: {e}")
         
         return config
     
@@ -492,8 +504,14 @@ class MobaXtermColors(BaseTool):
         if 'Colors' not in config:
             config.add_section('Colors')
         
+        # Only replace colors that exist in both the scheme and the config
+        # Get existing colors in the config
+        existing_colors = set(config['Colors'].keys())
+        
+        # Only apply colors that exist in both the scheme and the config
         for color_key, color_value in colors.items():
-            config['Colors'][color_key] = color_value
+            if color_key in existing_colors:
+                config['Colors'][color_key] = color_value
         
         # Confirm before writing (unless forced)
         if not force:
