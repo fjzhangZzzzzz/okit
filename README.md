@@ -16,6 +16,7 @@ okit 包含以下工具：
 | `pedump` | PE 文件（EXE/DLL）头信息和节信息解析工具 | 🔧 开发工具 | - |
 | `hexdump` | 十六进制文件查看工具，支持多种格式显示文件内容<br/>• 支持规范格式、十六进制、八进制、字符等多种显示模式<br/>• 类似 Linux hexdump 命令功能 | 🔧 开发工具 | - |
 | `mobaxterm-pro` | MobaXterm Professional 许可证管理工具<br/>• 自动探测系统中安装的 MobaXterm 信息<br/>• 生成 Custom.mxtpro 许可证文件<br/>• 一键部署许可证文件到安装目录 | 🔐 安全工具 | [使用文档](docs/mobaxterm_pro_usage.md) |
+| `mobaxterm-colors` | MobaXterm 配色方案管理工具<br/>• 自动探测 MobaXterm.ini 配置文件<br/>• 从 iTerm2-Color-Schemes 仓库下载和应用配色方案<br/>• 管理本地缓存，支持离线使用<br/>• 支持自动和手动缓存更新 | 🎨 美化工具 | - |
 | `shellconfig` | Shell 配置管理工具<br/>• 同步 Shell 配置文件<br/>• 管理配置状态<br/>• 备份和恢复配置 | ⚙️ 配置工具 | - |
 | `minimal` | 最小化示例工具，展示工具开发模式 | 📚 示例工具 | - |
 
