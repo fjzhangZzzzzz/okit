@@ -232,7 +232,86 @@ okit mobaxterm_colors cache --clean
 
 ```bash
 # 应用配色方案时创建备份
-okit mobaxterm_colors apply --scheme "Dracula"
+okit mobaxterm-colors apply --scheme "Dracula"
+```
+
+### 备份恢复功能
+
+工具提供了完整的备份恢复功能，允许用户从备份文件中恢复 MobaXterm 配置。
+
+#### 列出备份文件
+
+```bash
+# 列出所有可用的备份文件
+okit mobaxterm-colors restore --list-backups
+```
+
+这将显示所有可用的备份文件，包括：
+- 文件名
+- 文件大小
+- 创建时间
+
+#### 从备份恢复
+
+```bash
+# 从最新备份恢复（会提示确认）
+okit mobaxterm-colors restore
+
+# 从指定备份文件恢复
+okit mobaxterm-colors restore --backup-file MobaXterm_backup_20231201_120000.ini
+
+# 强制恢复（跳过确认）
+okit mobaxterm-colors restore --force
+
+# 从指定文件强制恢复
+okit mobaxterm-colors restore --backup-file MobaXterm_backup_20231201_120000.ini --force
+```
+
+#### 备份文件命名规则
+
+备份文件按照以下格式命名：
+```
+MobaXterm_backup_YYYYMMDD_HHMMSS.ini
+```
+
+例如：
+- `MobaXterm_backup_20231201_120000.ini`
+- `MobaXterm_backup_20231201_130000.ini`
+
+#### 安全特性
+
+1. **自动备份当前配置**：在恢复之前，工具会自动备份当前的配置文件
+2. **确认提示**：除非使用 `--force` 选项，否则会要求用户确认恢复操作
+3. **错误处理**：如果备份文件不存在或恢复失败，会显示相应的错误信息
+4. **文件验证**：恢复前会验证备份文件的存在性和可访问性
+
+#### 使用场景
+
+**场景1：测试新颜色方案**
+```bash
+# 应用新颜色方案（自动创建备份）
+okit mobaxterm-colors apply --scheme dracula
+
+# 如果不满意，恢复到之前的配置
+okit mobaxterm-colors restore
+```
+
+**场景2：批量测试多个方案**
+```bash
+# 应用第一个方案
+okit mobaxterm-colors apply --scheme solarized-dark
+
+# 应用第二个方案
+okit mobaxterm-colors apply --scheme monokai
+
+# 恢复到第一个方案
+okit mobaxterm-colors restore --backup-file MobaXterm_backup_20231201_120000.ini
+```
+
+**场景3：系统迁移**
+```bash
+# 在新系统上恢复之前的配置
+okit mobaxterm-colors restore --backup-file /path/to/backup/MobaXterm_backup_20231201_120000.ini
 ```
 
 ## 错误处理
@@ -257,7 +336,7 @@ okit mobaxterm_colors apply --scheme "Dracula"
 **解决方案**：
 - 更新缓存：`okit mobaxterm_colors cache --update`
 - 检查配色方案名称：`okit mobaxterm_colors list`
-- 使用搜索功能：`okit mobaxterm_colors list --search keyword`
+- 使用搜索功能：`okit mobaxterm-colors list --search keyword`
 
 #### 3. Git 操作失败
 
