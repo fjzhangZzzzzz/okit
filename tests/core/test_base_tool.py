@@ -2,11 +2,12 @@
 
 import os
 import sys
-import click
-import pytest
+import platform
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, mock_open
+import pytest
+import click
 from datetime import datetime
 
 from okit.core.base_tool import BaseTool
@@ -14,18 +15,17 @@ from okit.utils.log import output
 
 
 class MockBaseTool(BaseTool):
-    """Test tool class."""
+    """Mock base tool for testing."""
 
     def _add_cli_commands(self, cli_group):
         @cli_group.command()
         def test():
-            """Test command."""
             pass
 
 
 @pytest.fixture
 def test_tool():
-    """Create a test tool instance."""
+    """Create a test base tool instance."""
     return MockBaseTool("test_tool", "Test Tool")
 
 

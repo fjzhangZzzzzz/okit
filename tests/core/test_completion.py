@@ -4,6 +4,7 @@ import os
 import sys
 import platform
 import subprocess
+import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 import pytest

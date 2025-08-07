@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import configparser
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 
@@ -106,6 +107,17 @@ class MobaXtermColors(BaseTool):
                 self._sync_cache()
             else:
                 self._show_cache_status()
+        
+        @cli_group.command()
+        @click.option('--backup-file', help='Specific backup file to restore from')
+        @click.option('--list-backups', is_flag=True, help='List available backups')
+        @click.option('--force', is_flag=True, help='Force restore without confirmation')
+        def restore(backup_file: Optional[str], list_backups: bool, force: bool):
+            """Restore MobaXterm configuration from backup"""
+            if list_backups:
+                self._list_backups()
+            else:
+                self._restore_from_backup(backup_file, force)
         
         @cli_group.command()
         def status():
@@ -208,10 +220,9 @@ class MobaXtermColors(BaseTool):
                 output.info(f"Found MobaXterm.ini at: {path}")
                 return path
         
-        # If not found, return the most likely default path
-        default_path = possible_paths[0]
-        output.warning(f"MobaXterm.ini not found. Will create at: {default_path}")
-        return default_path
+        # If not found, return None
+        output.warning("MobaXterm.ini not found in any of the expected locations")
+        return None
     
     def _get_cache_path(self) -> Path:
         """Get local cache directory path"""
@@ -443,8 +454,13 @@ class MobaXtermColors(BaseTool):
         # Ensure directory exists
         config_path.parent.mkdir(parents=True, exist_ok=True)
         
+        # Write config with proper case preservation
         with open(config_path, 'w', encoding='utf-8') as f:
-            config.write(f)
+            for section in config.sections():
+                f.write(f"[{section}]\n")
+                for key, value in config[section].items():
+                    f.write(f"{key}={value}\n")
+                f.write("\n")
     
     def _backup_config(self, config_path: Path) -> Optional[Path]:
         """Create backup of MobaXterm.ini"""
@@ -454,7 +470,6 @@ class MobaXtermColors(BaseTool):
         backup_dir = self._get_backup_path()
         backup_dir.mkdir(parents=True, exist_ok=True)
         
-        from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = backup_dir / f"MobaXterm_backup_{timestamp}.ini"
         
@@ -505,13 +520,15 @@ class MobaXtermColors(BaseTool):
             config.add_section('Colors')
         
         # Only replace colors that exist in both the scheme and the config
-        # Get existing colors in the config
-        existing_colors = set(config['Colors'].keys())
+        # Get existing colors in the config (case-insensitive comparison)
+        existing_colors = {key.lower(): key for key in config['Colors'].keys()}
         
         # Only apply colors that exist in both the scheme and the config
         for color_key, color_value in colors.items():
-            if color_key in existing_colors:
-                config['Colors'][color_key] = color_value
+            if color_key.lower() in existing_colors:
+                # Use the original case from the config
+                original_key = existing_colors[color_key.lower()]
+                config['Colors'][original_key] = color_value
         
         # Confirm before writing (unless forced)
         if not force:
@@ -579,4 +596,116 @@ class MobaXtermColors(BaseTool):
             output.warning("Cache exists but is not a valid git repository")
             output.info("Run 'okit mobaxterm-colors cache --sync' to fix this")
         elif not cache_exists:
-            output.info("Cache not initialized. Run 'okit mobaxterm-colors cache --sync' to initialize") 
+            output.info("Cache not initialized. Run 'okit mobaxterm-colors cache --sync' to initialize")
+    
+    def _list_backups(self):
+        """List available backup files"""
+        backup_dir = self._get_backup_path()
+        
+        if not backup_dir.exists():
+            output.info("No backup directory found")
+            return
+        
+        backup_files = list(backup_dir.glob("MobaXterm_backup_*.ini"))
+        
+        if not backup_files:
+            output.info("No backup files found")
+            return
+        
+        # Sort by modification time (newest first)
+        backup_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        output.info("Available backups:")
+        for backup_file in backup_files:
+            # Get file info
+            stat = backup_file.stat()
+            size = stat.st_size
+            mtime = datetime.fromtimestamp(stat.st_mtime)
+            
+            # Format size
+            if size < 1024:
+                size_str = f"{size} B"
+            elif size < 1024 * 1024:
+                size_str = f"{size / 1024:.1f} KB"
+            else:
+                size_str = f"{size / (1024 * 1024):.1f} MB"
+            
+            output.result(f"  {backup_file.name}")
+            output.result(f"    Size: {size_str}")
+            output.result(f"    Created: {mtime.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    def _restore_from_backup(self, backup_file: Optional[str], force: bool = False):
+        """Restore MobaXterm configuration from backup"""
+        config_path = self._get_mobaxterm_config_path()
+        
+        if not config_path:
+            output.error("Could not determine MobaXterm configuration file path")
+            return
+        
+        backup_dir = self._get_backup_path()
+        
+        if not backup_dir.exists():
+            output.error("No backup directory found")
+            return
+        
+        # Find backup file
+        if backup_file:
+            # Use specified backup file
+            if Path(backup_file).is_absolute():
+                backup_path = Path(backup_file)
+            else:
+                backup_path = backup_dir / backup_file
+        else:
+            # Use most recent backup
+            backup_files = list(backup_dir.glob("MobaXterm_backup_*.ini"))
+            if not backup_files:
+                output.error("No backup files found")
+                return
+            
+            # Sort by modification time (newest first)
+            backup_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            backup_path = backup_files[0]
+        
+        # Check if backup file exists
+        if not backup_path.exists():
+            output.error(f"Backup file not found: {backup_path}")
+            return
+        
+        # Confirm before restoring (unless forced)
+        if not force:
+            console.print(Panel(
+                f"About to restore MobaXterm configuration from:\n{backup_path}\n\n"
+                f"Current config will be overwritten:\n{config_path}",
+                title="Restore Confirmation",
+                border_style="red"
+            ))
+            if not click.confirm("Continue?"):
+                output.info("Operation cancelled")
+                return
+        
+        # Create backup of current config if it exists
+        if config_path.exists():
+            current_backup = self._backup_config(config_path)
+            if current_backup:
+                output.info(f"Current config backed up to: {current_backup}")
+        
+        # Restore from backup
+        try:
+            # Ensure config directory exists
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy backup to config location
+            shutil.copy2(backup_path, config_path)
+            
+            output.success(f"Configuration restored from: {backup_path}")
+            
+            # Show backup file info
+            stat = backup_path.stat()
+            mtime = datetime.fromtimestamp(stat.st_mtime)
+            output.info(f"Backup created: {mtime.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+        except Exception as e:
+            output.error(f"Failed to restore configuration: {e}")
+            return False
+        
+        return True 
