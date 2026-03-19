@@ -3,91 +3,6 @@ from typing import Type, Callable, Any, Optional, List
 from .base_tool import BaseTool
 
 
-class LazyCommand(click.Command):
-    """延迟加载的Command代理类"""
-
-    def __init__(
-        self,
-        name: str,
-        tool_class: Type[BaseTool],
-        tool_description: str,
-        use_subcommands: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        # 初始化基本的Command属性，暂不设置callback
-        super().__init__(name=name, **kwargs)
-
-        self.tool_class = tool_class
-        self.tool_name = name
-        self.tool_description = tool_description
-        self.use_subcommands = use_subcommands
-        self._tool_instance: Optional[BaseTool] = None
-        self._real_command: Optional[click.Command] = None
-
-        # 设置基本的help信息，无需实例化工具
-        self.help = tool_description or f"{name} tool"
-        self.short_help = tool_description or f"{name} tool"
-
-        # 对于简单命令模式，立即创建真正的命令以确保帮助信息正确显示
-        if not use_subcommands:
-            self._ensure_real_command()
-
-    def _ensure_real_command(self) -> None:
-        """确保真正的命令已经创建"""
-        if self._real_command is None:
-            # 创建工具实例
-            self._tool_instance = self.tool_class(self.tool_name, self.tool_description)
-            self._tool_instance.use_subcommands = self.use_subcommands
-
-            # 创建真正的CLI命令
-            self._real_command = self._tool_instance.create_cli_group()
-
-            # 复制回调函数
-            if hasattr(self._real_command, "callback") and self._real_command.callback:
-                self.callback = self._real_command.callback
-
-            # 复制帮助信息
-            if hasattr(self._real_command, "help"):
-                self.help = self._real_command.help
-            if hasattr(self._real_command, "short_help"):
-                self.short_help = self._real_command.short_help
-
-            # 复制参数定义
-            if hasattr(self._real_command, "params"):
-                self.params = self._real_command.params
-
-            # 复制其他重要属性
-            for attr in [
-                "context_class",
-                "context_settings",
-                "ignore_unknown_options",
-                "allow_interspersed_args",
-            ]:
-                if hasattr(self._real_command, attr):
-                    setattr(self, attr, getattr(self._real_command, attr))
-
-    def invoke(self, ctx: click.Context) -> Any:
-        """重写invoke方法以支持延迟加载"""
-        # 对于简单命令模式，确保真正的命令已创建
-        if not self.use_subcommands:
-            self._ensure_real_command()
-
-        # 如果是真正的命令，直接调用
-        if self._real_command:
-            return self._real_command.invoke(ctx)
-
-        return super().invoke(ctx)
-
-    def get_help(self, ctx: click.Context) -> str:
-        """获取帮助信息，对于简单命令模式返回真正的帮助信息"""
-        # 对于简单命令模式，返回真正的帮助信息
-        if not self.use_subcommands and self._real_command:
-            return self._real_command.get_help(ctx)
-
-        # 对于复杂命令模式或未创建真正命令的情况，返回基本描述
-        return self.help or f"{self.tool_name} tool"
-
-
 class LazyGroup(click.Group):
     """延迟加载的Group代理类"""
 
@@ -140,7 +55,7 @@ class LazyGroup(click.Group):
 
         # 确保命令被正确加载
         self._load_commands()
-        
+
         # 调用父类的invoke方法，让Click处理子命令
         return super().invoke(ctx)
 
@@ -177,18 +92,16 @@ def okit_tool(
         tool_class.description = description
         tool_class.use_subcommands = use_subcommands
 
-        # 创建延迟加载的CLI命令/组，避免立即实例化工具类
         if use_subcommands:
+            # 延迟加载的CLI组
             cli = LazyGroup(
                 name=tool_name, tool_class=tool_class, tool_description=description
             )
         else:
-            cli = LazyCommand(
-                name=tool_name,
-                tool_class=tool_class,
-                tool_description=description,
-                use_subcommands=use_subcommands,
-            )
+            # 非子命令模式：直接创建工具实例并获取 click.Command
+            instance = tool_class(tool_name, description)
+            instance.use_subcommands = False
+            cli = instance.create_cli_group()
 
         # 将 cli 添加到模块全局变量
         import sys

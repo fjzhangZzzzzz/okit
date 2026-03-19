@@ -33,13 +33,11 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
                 output.debug("Executing hello command")
                 output.success("Hello from Minimal Example Tool!")
 
-                # Show tool information
-                tool_info = self.get_tool_info()
                 output.info("Tool Information:")
-                output.result(f"  Name: {tool_info['name']}")
-                output.result(f"  Description: {tool_info['description']}")
-                output.result(f"  Config Path: {tool_info['config_path']}")
-                output.result(f"  Data Path: {tool_info['data_path']}")
+                output.result(f"  Name: {self.tool_name}")
+                output.result(f"  Description: {self.description}")
+                output.result(f"  Config Path: {self.get_config_path()}")
+                output.result(f"  Data Path: {self.get_data_path()}")
 
             except Exception as e:
                 output.error(f"hello command execution failed: {e}")
@@ -141,7 +139,3 @@ Minimal Example Tool - Demonstrates BaseTool and configuration management featur
             except Exception as e:
                 output.error(f"test command execution failed: {e}")
 
-    def cleanup(self) -> None:
-        """Custom cleanup logic"""
-        output.debug("Executing custom cleanup logic")
-        output.info("Minimal Example Tool cleanup completed")

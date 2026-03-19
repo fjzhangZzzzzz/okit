@@ -1,11 +1,9 @@
 import click
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, Type, List
-import json
-import logging
-from datetime import datetime
+from typing import Dict, Any, Optional, Union
 import shutil
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -36,15 +34,11 @@ class BaseTool(ABC):
         # Initialize config and data directories
         self._init_config_data()
 
-        # Tool lifecycle
-        self._start_time = datetime.now()
-
         # YAML instance, created on demand
         self._yaml: Optional[YAML] = None
 
     def _init_config_data(self) -> None:
         """Initialize config and data directories"""
-        # Ensure base directories exist
         self._ensure_dir(self._get_okit_root_dir())
         self._ensure_dir(self._get_tool_config_dir())
         self._ensure_dir(self._get_tool_data_dir())
@@ -61,7 +55,6 @@ class BaseTool(ABC):
         # Convert Windows path to Unix style for git bash
         path_str = str(path)
         if ":" in path_str and "\\" in path_str:  # Windows path like C:\Users\...
-            # Convert C:\Users\... to /c/Users/...
             drive, rest = path_str.split(":", 1)
             rest_unix = rest.replace("\\", "/")
             unix_path = f"/{drive.lower()}{rest_unix}"
@@ -75,25 +68,18 @@ class BaseTool(ABC):
         """Detect if running in git bash environment"""
         import os
 
-        # 1. Check MSYSTEM environment variable
         msystem = os.environ.get("MSYSTEM", "")
         if msystem not in ["MINGW32", "MINGW64"]:
             return False
 
-        # 2. Check SHELL environment variable (optional, may not exist in git bash)
         shell = os.environ.get("SHELL", "")
         if shell and not shell.endswith("bash"):
             return False
 
-        # 3. Check for Windows path mapping feature using environment variables
-        # In git bash, we can check for specific environment variables that indicate Windows path mapping
         home = os.environ.get("HOME", "")
-
-        # Check if HOME contains Windows path (like C:\Users\...)
         if home and ":" in home and "\\" in home:
             return True
 
-        # Alternative: check for git bash specific environment variables
         ostype = os.environ.get("OSTYPE", "")
         if ostype.startswith("msys"):
             return True
@@ -120,7 +106,6 @@ class BaseTool(ABC):
     def _get_yaml(self) -> "YAML":
         """Get YAML instance, create on demand with lazy import"""
         if self._yaml is None:
-            # Lazy import to avoid 55ms startup cost
             from ruamel.yaml import YAML
 
             self._yaml = YAML()
@@ -178,7 +163,6 @@ class BaseTool(ABC):
         config_file = self.get_config_file()
 
         try:
-            # Ensure directory exists
             config_file.parent.mkdir(parents=True, exist_ok=True)
 
             with open(config_file, "w", encoding="utf-8") as f:
@@ -203,7 +187,6 @@ class BaseTool(ABC):
         """
         config = self.load_config()
 
-        # Handle nested keys
         keys = key.split(".")
         value = config
 
@@ -227,54 +210,17 @@ class BaseTool(ABC):
         """
         config = self.load_config()
 
-        # Handle nested keys
         keys = key.split(".")
         current = config
 
-        # Create nested structure
         for k in keys[:-1]:
             if k not in current or not isinstance(current[k], dict):
                 current[k] = {}
             current = current[k]
 
-        # Set value
         current[keys[-1]] = value
 
         return self.save_config(config)
-
-    def unset_config_value(self, key: str) -> bool:
-        """
-        Unset (remove) configuration value
-
-        Args:
-            key: Configuration key, supports dot-separated nested keys
-
-        Returns:
-            bool: Whether unsetting was successful
-        """
-        config = self.load_config()
-
-        # Handle nested keys
-        keys = key.split(".")
-        current = config
-
-        try:
-            # Navigate to the parent of the target key
-            for k in keys[:-1]:
-                if k not in current or not isinstance(current[k], dict):
-                    return True  # Key doesn't exist, consider it already unset
-                current = current[k]
-
-            # Remove the target key
-            if keys[-1] in current:
-                del current[keys[-1]]
-                return self.save_config(config)
-            else:
-                return True  # Key doesn't exist, consider it already unset
-
-        except Exception as e:
-            output.error(f"Failed to unset config value '{key}': {e}")
-            return False
 
     def has_config(self) -> bool:
         """Check if configuration file exists"""
@@ -297,66 +243,6 @@ class BaseTool(ABC):
             Path: Complete data file path
         """
         return self._get_tool_data_dir().joinpath(*path_parts)
-
-    def ensure_data_dir(self, *path_parts: str) -> Path:
-        """
-        Ensure data directory exists
-
-        Args:
-            *path_parts: Directory path parts
-
-        Returns:
-            Path: Created directory path
-        """
-        data_dir = self._get_tool_data_dir().joinpath(*path_parts)
-        return self._ensure_dir(data_dir)
-
-    def cleanup_data(self, *path_parts: str) -> bool:
-        """
-        Clean up data directory or file
-
-        Args:
-            *path_parts: Path parts to clean up
-
-        Returns:
-            bool: Whether cleanup was successful
-        """
-        target_path = self._get_tool_data_dir().joinpath(*path_parts)
-
-        try:
-            if target_path.exists():
-                if target_path.is_file():
-                    target_path.unlink()
-                else:
-                    shutil.rmtree(target_path)
-                output.debug(f"Successfully cleaned data: {target_path}")
-            return (
-                not target_path.exists()
-            )  # Success if path doesn't exist or was removed
-        except Exception as e:
-            output.error(f"Failed to clean data: {target_path}, Error: {e}")
-            return False  # Any error during cleanup is a failure
-
-    def list_data_files(self, *path_parts: str) -> List[Path]:
-        """
-        List files in data directory
-
-        Args:
-            *path_parts: Directory path parts
-
-        Returns:
-            List[Path]: List of file paths
-        """
-        target_dir = self._get_tool_data_dir().joinpath(*path_parts)
-
-        if not target_dir.exists() or not target_dir.is_dir():
-            return []
-
-        try:
-            return list(target_dir.iterdir())
-        except Exception as e:
-            output.error(f"Failed to list data files: {target_dir}, Error: {e}")
-            return []
 
     # ===== Advanced Features =====
 
@@ -399,20 +285,16 @@ class BaseTool(ABC):
         config_file = self.get_config_file()
 
         try:
-            # Read backup content first
             with open(backup_path, "r", encoding="utf-8") as f:
                 backup_content = self._get_yaml().load(f)
 
-            # Backup current config
             if config_file.exists():
                 self.backup_config()
 
-            # Restore config
             config_file.parent.mkdir(parents=True, exist_ok=True)
             with open(config_file, "w", encoding="utf-8") as f:
                 self._get_yaml().dump(backup_content, f)
 
-            # Verify restore was successful
             with open(config_file, "r", encoding="utf-8") as f:
                 restored_content = self._get_yaml().load(f)
 
@@ -426,20 +308,6 @@ class BaseTool(ABC):
             output.error(f"Failed to restore config file: {e}")
             return False
 
-    def migrate_config(self, old_version: str, new_version: str) -> bool:
-        """
-        Migrate configuration (subclasses can override)
-
-        Args:
-            old_version: Old version number
-            new_version: New version number
-
-        Returns:
-            bool: Whether migration was successful
-        """
-        output.debug(f"Config migration: {old_version} -> {new_version}")
-        return True
-
     def create_cli_group(
         self, tool_name: str = "", description: str = ""
     ) -> Union[click.Group, click.Command]:
@@ -448,7 +316,6 @@ class BaseTool(ABC):
 
         This is a key method ensuring compatibility with auto-registration mechanism
         """
-        # Use instance attributes if not provided
         if not tool_name:
             tool_name = self.tool_name
         if not description:
@@ -457,53 +324,40 @@ class BaseTool(ABC):
         use_subcommands = getattr(self, "use_subcommands", True)
 
         if use_subcommands:
-            # Create subcommand group
-            @click.group()
+            @click.group(name=tool_name)
             def cli() -> None:
                 """Tool CLI entry point"""
                 pass
 
-            # Set CLI help information
             cli.help = self._get_cli_help()
             cli.short_help = self._get_cli_short_help()
 
-            # Add tool-specific commands
             self._add_cli_commands(cli)
 
             return cli
         else:
-            # Create direct command (no subcommands)
-            # We need to create a command that can be called directly
-            # We'll create a temporary group to add the command, then return the command itself
-
+            # Non-subcommand mode: collect commands via a temporary group,
+            # then extract the first command as the tool's direct command.
             @click.group()
-            def temp_group() -> None:
-                """Temporary group for command creation"""
+            def collector() -> None:
                 pass
 
-            # Add tool-specific commands to the temporary group
-            self._add_cli_commands(temp_group)
+            self._add_cli_commands(collector)
 
-            # Get the first command from the temporary group
-            if temp_group.commands:
-                main_command = list(temp_group.commands.values())[0]
-                # Set the command name to the tool name
+            if collector.commands:
+                main_command = list(collector.commands.values())[0]
                 main_command.name = tool_name
                 main_command.help = self._get_cli_help()
                 main_command.short_help = self._get_cli_short_help()
-
                 return main_command
-            else:
-                # Fallback: create a simple command
-                @click.command()
-                def fallback_command() -> None:
-                    """Fallback command"""
-                    pass
 
-                fallback_command.name = tool_name
-                fallback_command.help = self._get_cli_help()
-                fallback_command.short_help = self._get_cli_short_help()
-                return fallback_command
+            # No commands registered — return a no-op command
+            @click.command(name=tool_name, help=self._get_cli_help())
+            def noop() -> None:
+                pass
+
+            noop.short_help = self._get_cli_short_help()
+            return noop
 
     @abstractmethod
     def _add_cli_commands(self, cli_group: click.Group) -> None:
@@ -513,25 +367,6 @@ class BaseTool(ABC):
         Args:
             cli_group: Click command group for adding subcommands
         """
-        pass
-
-    def get_tool_info(self) -> Dict[str, Any]:
-        """Get tool information"""
-        return {
-            "name": self.tool_name,
-            "description": self.description,
-            "start_time": self._start_time.isoformat(),
-            "config_path": str(self.get_config_path()),
-            "data_path": str(self.get_data_path()),
-        }
-
-    def cleanup(self) -> None:
-        """Tool cleanup work"""
-        output.debug(f"Tool {self.tool_name} is cleaning up")
-        self._cleanup_impl()
-
-    def _cleanup_impl(self) -> None:
-        """Cleanup implementation that subclasses can override"""
         pass
 
     def _get_cli_help(self) -> str:

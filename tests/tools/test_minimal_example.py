@@ -151,10 +151,3 @@ def test_test_command_output_types(minimal_tool, cli_runner, mock_output):
         mock_output.debug.assert_any_call("Processed item 5", category="processing")
         # Item 6 (i=5): success
         mock_output.success.assert_any_call("Completed item 6")
-
-
-def test_cleanup(minimal_tool, mock_output):
-    """Test cleanup implementation."""
-    minimal_tool.cleanup()
-    mock_output.debug.assert_called_with("Executing custom cleanup logic")
-    mock_output.info.assert_called_with("Minimal Example Tool cleanup completed")

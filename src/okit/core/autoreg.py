@@ -32,21 +32,9 @@ def auto_register_commands(
                         from okit.utils.timing import with_timing
 
                         cmd.callback = with_timing(cmd.callback)
-                    
-                    # 确定命令名称：优先使用工具实例的 tool_name，否则使用模块名
-                    command_name = modname
-                    
-                    # 查找模块中的工具类实例（支持 @okit_tool 装饰器）
-                    for attr_name in dir(module):
-                        attr = getattr(module, attr_name)
-                        
-                        # 检查是否是工具实例（有 tool_name 和 create_cli_group 方法）
-                        if (hasattr(attr, 'tool_name') and 
-                            hasattr(attr, 'create_cli_group') and 
-                            callable(getattr(attr, 'create_cli_group'))):
-                            command_name = attr.tool_name
-                            break
-                    
+
+                    # Use the command's own name if available, otherwise fall back to module name
+                    command_name = getattr(cmd, "name", None) or modname
                     parent_group.add_command(cmd, name=command_name)
 
             except Exception as e:

@@ -23,21 +23,21 @@ def mock_package_path(tmp_path):
     """Create a mock package path with test files."""
     pkg_path = tmp_path / "test_package"
     pkg_path.mkdir()
-    
+
     # Create __init__.py
     (pkg_path / "__init__.py").write_text("")
-    
-    # Create a test module with CLI command
+
+    # Create a test module with CLI command (using proper name)
     test_module = """
 import click
 
-@click.command()
+@click.command("test_module")
 def cli():
     \"\"\"Test command\"\"\"
     pass
 """
     (pkg_path / "test_module.py").write_text(test_module)
-    
+
     # Create a test module with tool class
     tool_module = """
 import click
@@ -46,7 +46,7 @@ from okit.core.base_tool import BaseTool
 class TestTool(BaseTool):
     def __init__(self):
         super().__init__("test_tool", "Test Tool")
-        
+
     def _add_cli_commands(self, cli_group):
         @cli_group.command()
         def test():
@@ -57,56 +57,56 @@ test_tool = TestTool()
 cli = test_tool.create_cli_group()
 """
     (pkg_path / "tool_module.py").write_text(tool_module)
-    
+
     # Create a test package with submodules
     sub_pkg = pkg_path / "sub_package"
     sub_pkg.mkdir()
     (sub_pkg / "__init__.py").write_text("")
-    
-    # Create a test module in subpackage
+
+    # Create a test module in subpackage (using proper name)
     sub_module = """
 import click
 
-@click.command()
+@click.command("sub_module")
 def cli():
     \"\"\"Sub command\"\"\"
     pass
 """
     (sub_pkg / "sub_module.py").write_text(sub_module)
-    
+
     return pkg_path
 
 
 def test_auto_register_basic(mock_package, mock_package_path):
     """Test basic command registration."""
     parent_group = click.Group()
-    
+
     # Create test package module
     spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[mock_package] = module
-    
+
     # Create test module
     test_module_path = mock_package_path / "test_module.py"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.test_module", str(test_module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.test_module"] = module
     spec.loader.exec_module(module)
-    
+
     # Create tool module
     tool_module_path = mock_package_path / "tool_module.py"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.tool_module", str(tool_module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.tool_module"] = module
     spec.loader.exec_module(module)
-    
+
     # Register commands
     auto_register_commands(mock_package, str(mock_package_path), parent_group)
-    
-    # Verify commands were registered
+
+    # Verify commands were registered using cmd.name
     assert "test_module" in parent_group.commands
     assert "test_tool" in parent_group.commands
-    
+
     # Clean up
     del sys.modules[mock_package]
     del sys.modules[f"{mock_package}.test_module"]
@@ -116,31 +116,31 @@ def test_auto_register_basic(mock_package, mock_package_path):
 def test_auto_register_subpackage(mock_package, mock_package_path):
     """Test subpackage command registration."""
     parent_group = click.Group()
-    
+
     # Create test package module
     spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[mock_package] = module
-    
+
     # Create subpackage module
     sub_pkg_path = mock_package_path / "sub_package"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.sub_package", str(sub_pkg_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.sub_package"] = module
-    
+
     # Create submodule
     sub_module_path = sub_pkg_path / "sub_module.py"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.sub_package.sub_module", str(sub_module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.sub_package.sub_module"] = module
     spec.loader.exec_module(module)
-    
+
     # Register commands
     auto_register_commands(mock_package, str(mock_package_path), parent_group)
-    
+
     # Verify subpackage command was registered
     assert "sub_module" in parent_group.commands
-    
+
     # Clean up
     del sys.modules[mock_package]
     del sys.modules[f"{mock_package}.sub_package"]
@@ -150,24 +150,24 @@ def test_auto_register_subpackage(mock_package, mock_package_path):
 def test_auto_register_debug_enabled(mock_package, mock_package_path):
     """Test command registration with debug enabled."""
     parent_group = click.Group()
-    
+
     with patch("okit.utils.timing.with_timing") as mock_timing:
         # Create test package module
         spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
         module = importlib.util.module_from_spec(spec)
         sys.modules[mock_package] = module
-        
+
         # Create test module
         test_module_path = mock_package_path / "test_module.py"
         spec = importlib.util.spec_from_file_location(f"{mock_package}.test_module", str(test_module_path))
         module = importlib.util.module_from_spec(spec)
         sys.modules[f"{mock_package}.test_module"] = module
         spec.loader.exec_module(module)
-        
+
         # Register commands with debug enabled
         auto_register_commands(mock_package, str(mock_package_path), parent_group, debug_enabled=True)
         assert mock_timing.called
-        
+
         # Clean up
         del sys.modules[mock_package]
         del sys.modules[f"{mock_package}.test_module"]
@@ -176,12 +176,12 @@ def test_auto_register_debug_enabled(mock_package, mock_package_path):
 def test_auto_register_import_error(mock_package, mock_package_path):
     """Test handling of import errors."""
     parent_group = click.Group()
-    
+
     # Create test package module
     spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[mock_package] = module
-    
+
     # Create a module that will raise an import error
     error_module = """
 import non_existent_module
@@ -191,13 +191,13 @@ def cli():
     pass
 """
     (mock_package_path / "error_module.py").write_text(error_module)
-    
+
     # Create error module
     error_module_path = mock_package_path / "error_module.py"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.error_module", str(error_module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.error_module"] = module
-    
+
     # Test that the error is handled gracefully
     with patch("builtins.print") as mock_print:
         # Mock importlib.import_module to raise ImportError
@@ -205,14 +205,14 @@ def cli():
             if name == f"{mock_package}.error_module":
                 raise ImportError("No module named 'non_existent_module'")
             return MagicMock()
-        
+
         with patch("importlib.import_module", side_effect=mock_import_module):
             auto_register_commands(mock_package, str(mock_package_path), parent_group)
             mock_print.assert_called_with(
                 f"Failed to import {mock_package}.error_module: No module named 'non_existent_module'",
                 file=sys.stderr
             )
-    
+
     # Clean up
     del sys.modules[mock_package]
     del sys.modules[f"{mock_package}.error_module"]
@@ -221,7 +221,7 @@ def cli():
 def test_register_all_tools():
     """Test registration of all tools."""
     main_group = click.Group()
-    
+
     with patch("okit.tools.__file__", "/path/to/tools"):
         with patch("okit.core.autoreg.auto_register_commands") as mock_register:
             register_all_tools(main_group)
@@ -250,12 +250,12 @@ def test_register_all_tools_no_main_group():
 def test_auto_register_multiple_tools(mock_package, mock_package_path):
     """Test registration of multiple tools in the same module."""
     parent_group = click.Group()
-    
+
     # Create test package module
     spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[mock_package] = module
-    
+
     # Create a module with multiple tools
     multi_tool_module = """
 import click
@@ -264,7 +264,7 @@ from okit.core.base_tool import BaseTool
 class Tool1(BaseTool):
     def __init__(self):
         super().__init__("tool1", "Tool 1")
-        
+
     def _add_cli_commands(self, cli_group):
         @cli_group.command()
         def test():
@@ -274,7 +274,7 @@ class Tool1(BaseTool):
 class Tool2(BaseTool):
     def __init__(self):
         super().__init__("tool2", "Tool 2")
-        
+
     def _add_cli_commands(self, cli_group):
         @cli_group.command()
         def test():
@@ -286,79 +286,72 @@ tool2 = Tool2()
 cli = tool1.create_cli_group()  # First tool's CLI should be used
 """
     (mock_package_path / "multi_tool_module.py").write_text(multi_tool_module)
-    
+
     # Create module
     module_path = mock_package_path / "multi_tool_module.py"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.multi_tool_module", str(module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.multi_tool_module"] = module
     spec.loader.exec_module(module)
-    
+
     # Register commands
     auto_register_commands(mock_package, str(mock_package_path), parent_group)
-    
-    # Verify first tool's name was used
+
+    # cmd.name comes from create_cli_group() which now uses tool_name
     assert "tool1" in parent_group.commands
     assert "tool2" not in parent_group.commands
-    
+
     # Clean up
     del sys.modules[mock_package]
     del sys.modules[f"{mock_package}.multi_tool_module"]
 
 
-def test_auto_register_invalid_tool(mock_package, mock_package_path):
-    """Test handling of invalid tool instances."""
+def test_auto_register_uses_cmd_name(mock_package, mock_package_path):
+    """Test that auto_register uses cmd.name for command registration."""
     parent_group = click.Group()
-    
+
     # Create test package module
     spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[mock_package] = module
-    
-    # Create a module with invalid tool
-    invalid_tool_module = """
+
+    # Create a module with a named click command
+    named_module = """
 import click
 
-class InvalidTool:
-    def __init__(self):
-        self.tool_name = "invalid_tool"
-        # Missing create_cli_group method
-
-invalid_tool = InvalidTool()
-@click.command()
+@click.command("my_custom_name")
 def cli():
     \"\"\"Test command\"\"\"
     pass
 """
-    (mock_package_path / "invalid_tool_module.py").write_text(invalid_tool_module)
-    
-    # Create module
-    module_path = mock_package_path / "invalid_tool_module.py"
-    spec = importlib.util.spec_from_file_location(f"{mock_package}.invalid_tool_module", str(module_path))
+    (mock_package_path / "named_module.py").write_text(named_module)
+
+    module_path = mock_package_path / "named_module.py"
+    spec = importlib.util.spec_from_file_location(f"{mock_package}.named_module", str(module_path))
     module = importlib.util.module_from_spec(spec)
-    sys.modules[f"{mock_package}.invalid_tool_module"] = module
+    sys.modules[f"{mock_package}.named_module"] = module
     spec.loader.exec_module(module)
-    
+
     # Register commands
     auto_register_commands(mock_package, str(mock_package_path), parent_group)
-    
-    # Verify module name was used instead of tool name
-    assert "invalid_tool_module" in parent_group.commands
-    
+
+    # Should use the command's name attribute
+    assert "my_custom_name" in parent_group.commands
+
     # Clean up
     del sys.modules[mock_package]
-    del sys.modules[f"{mock_package}.invalid_tool_module"]
+    del sys.modules[f"{mock_package}.named_module"]
 
 
 def test_auto_register_debug_timing(mock_package, mock_package_path):
     """Test debug timing decorator application."""
     parent_group = click.Group()
-    
+
     # Create test package module
     spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[mock_package] = module
-    
+
     # Create a test module with callback
     test_module = """
 import click
@@ -366,20 +359,20 @@ import click
 def original_callback():
     return "test"
 
-@click.command()
+@click.command("timing_module")
 def cli():
     \"\"\"Test command\"\"\"
     return original_callback()
 """
     (mock_package_path / "timing_module.py").write_text(test_module)
-    
+
     # Create module
     module_path = mock_package_path / "timing_module.py"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.timing_module", str(module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.timing_module"] = module
     spec.loader.exec_module(module)
-    
+
     with patch("okit.utils.timing.with_timing") as mock_timing:
         # Mock the timing decorator
         def timing_wrapper(func):
@@ -387,15 +380,15 @@ def cli():
                 return f"timed_{func(*args, **kwargs)}"
             return wrapped
         mock_timing.side_effect = timing_wrapper
-        
+
         # Register commands with debug enabled
         auto_register_commands(mock_package, str(mock_package_path), parent_group, debug_enabled=True)
-        
+
         # Verify timing decorator was applied
         assert mock_timing.called
         result = parent_group.commands["timing_module"].callback()
         assert result == "timed_test"
-    
+
     # Clean up
     del sys.modules[mock_package]
     del sys.modules[f"{mock_package}.timing_module"]
@@ -404,12 +397,12 @@ def cli():
 def test_auto_register_other_exceptions(mock_package, mock_package_path):
     """Test handling of other exceptions during registration."""
     parent_group = click.Group()
-    
+
     # Create test package module
     spec = importlib.util.spec_from_file_location(mock_package, str(mock_package_path / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules[mock_package] = module
-    
+
     # Create a module that will raise an attribute error
     error_module = """
 import click
@@ -420,26 +413,88 @@ def cli():
     pass
 """
     (mock_package_path / "error_module.py").write_text(error_module)
-    
+
     # Create error module
     error_module_path = mock_package_path / "error_module.py"
     spec = importlib.util.spec_from_file_location(f"{mock_package}.error_module", str(error_module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[f"{mock_package}.error_module"] = module
-    
+
     # Mock importlib.import_module to raise AttributeError
     def mock_import_module(name, *args, **kwargs):
         if name == f"{mock_package}.error_module":
             raise AttributeError("'module' object has no attribute 'cli'")
         return module
-    
+
     # Test that the error is handled gracefully
     with patch("builtins.print") as mock_print:
         with patch("importlib.import_module", side_effect=mock_import_module):
             auto_register_commands(mock_package, str(mock_package_path), parent_group)
             mock_print.assert_called()
             assert "Failed to import" in mock_print.call_args[0][0]
-    
+
     # Clean up
     del sys.modules[mock_package]
     del sys.modules[f"{mock_package}.error_module"]
+
+
+def test_auto_register_module_without_cli(tmp_path):
+    """Test that modules without a 'cli' attribute are silently skipped."""
+    pkg_name = "test_pkg_no_cli"
+    pkg_path = tmp_path / pkg_name
+    pkg_path.mkdir()
+    (pkg_path / "__init__.py").write_text("")
+
+    (pkg_path / "no_cli_module.py").write_text("def some_function():\n    pass\n")
+
+    spec = importlib.util.spec_from_file_location(pkg_name, str(pkg_path / "__init__.py"))
+    pkg_module = importlib.util.module_from_spec(spec)
+    sys.modules[pkg_name] = pkg_module
+
+    mod_spec = importlib.util.spec_from_file_location(f"{pkg_name}.no_cli_module", str(pkg_path / "no_cli_module.py"))
+    mod_module = importlib.util.module_from_spec(mod_spec)
+    sys.modules[f"{pkg_name}.no_cli_module"] = mod_module
+    mod_spec.loader.exec_module(mod_module)
+
+    parent_group = click.Group()
+    auto_register_commands(pkg_name, str(pkg_path), parent_group)
+
+    assert "no_cli_module" not in parent_group.commands
+    assert len(parent_group.commands) == 0
+
+    del sys.modules[pkg_name]
+    del sys.modules[f"{pkg_name}.no_cli_module"]
+
+
+def test_auto_register_debug_group_without_callback(tmp_path):
+    """Test that debug_enabled does not apply timing to a click.Group with no callback."""
+    pkg_name = "test_pkg_group_no_cb"
+    pkg_path = tmp_path / pkg_name
+    pkg_path.mkdir()
+    (pkg_path / "__init__.py").write_text("")
+
+    group_module_src = (
+        "import click\n"
+        "cli = click.Group('group_tool')\n"
+        "@cli.command()\n"
+        "def sub():\n"
+        "    pass\n"
+    )
+    (pkg_path / "group_module.py").write_text(group_module_src)
+
+    spec = importlib.util.spec_from_file_location(pkg_name, str(pkg_path / "__init__.py"))
+    pkg_module = importlib.util.module_from_spec(spec)
+    sys.modules[pkg_name] = pkg_module
+
+    mod_spec = importlib.util.spec_from_file_location(f"{pkg_name}.group_module", str(pkg_path / "group_module.py"))
+    mod_module = importlib.util.module_from_spec(mod_spec)
+    sys.modules[f"{pkg_name}.group_module"] = mod_module
+    mod_spec.loader.exec_module(mod_module)
+
+    parent_group = click.Group()
+    with patch("okit.utils.timing.with_timing") as mock_timing:
+        auto_register_commands(pkg_name, str(pkg_path), parent_group, debug_enabled=True)
+        mock_timing.assert_not_called()
+
+    del sys.modules[pkg_name]
+    del sys.modules[f"{pkg_name}.group_module"]
