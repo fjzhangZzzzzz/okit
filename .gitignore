@@ -1,5 +1,6 @@
 .tmp/
 dist/
+.release/
 okit
 okit.exe
 !cmd/okit

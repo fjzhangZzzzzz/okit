@@ -23,6 +23,8 @@ jobs:
           test -z "$(gofmt -l .)"
           go test ./...
           go vet ./...
+      - name: Generate release manifest
+        run: go run ./internal/releasemanifest/cmd/generate --version "${{ github.ref_name }}" --output .release/release-manifest.json
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser

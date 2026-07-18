@@ -2,27 +2,47 @@ $ErrorActionPreference = 'Stop'
 $repo = 'fjzhangZzzzzz/okit'
 $okitHome = if ($env:OKIT_HOME) { $env:OKIT_HOME } else { Join-Path $HOME '.okit' }
 $installDir = if ($env:OKIT_INSTALL_DIR) { $env:OKIT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\okit\bin' }
-$version = $env:OKIT_VERSION
+$requestedVersion = $env:OKIT_VERSION
+$releaseRoot = if ($env:OKIT_RELEASE_BASE_URL) { $env:OKIT_RELEASE_BASE_URL.TrimEnd('/') } else { "https://github.com/$repo/releases" }
+
+function Assert-SafeFilename([string]$Name, [string]$Kind) {
+    if (-not $Name -or $Name -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$' -or [IO.Path]::GetFileName($Name) -ne $Name) {
+        throw "Invalid $Kind filename in release manifest: $Name"
+    }
+}
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'okit requires a 64-bit Windows system' }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
-if (-not $version) {
-    $version = (Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest").tag_name
-}
-if ($version -notmatch '^v\d+\.\d+\.\d+(?:[-+].+)?$') { throw "Invalid OKIT_VERSION: $version" }
+if ($requestedVersion -and $requestedVersion -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid OKIT_VERSION: $requestedVersion" }
 
-$plainVersion = $version.TrimStart('v')
-$asset = "okit_${plainVersion}_windows_${arch}.zip"
-$base = "https://github.com/$repo/releases/download/$version"
+$manifestURL = if ($requestedVersion) {
+    "$releaseRoot/download/$requestedVersion/release-manifest.json"
+} else {
+    "$releaseRoot/latest/download/release-manifest.json"
+}
+$manifest = Invoke-RestMethod -Uri $manifestURL
+if ($manifest.schema -ne 1) { throw "Unsupported release manifest schema: $($manifest.schema)" }
+$version = [string]$manifest.version
+if ($version -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid version in release manifest: $version" }
+if ($requestedVersion -and $version -ne $requestedVersion) { throw "Release manifest version $version does not match requested version $requestedVersion" }
+$target = "windows-$arch"
+$assetProperty = $manifest.assets.PSObject.Properties[$target]
+if (-not $assetProperty -or -not $assetProperty.Value) { throw "Release manifest has no asset for $target" }
+$asset = [string]$assetProperty.Value
+$checksumsName = [string]$manifest.checksums
+Assert-SafeFilename $asset 'asset'
+Assert-SafeFilename $checksumsName 'checksums'
+
+$base = "$releaseRoot/download/$version"
 $temp = Join-Path ([IO.Path]::GetTempPath()) ("okit-install-" + [guid]::NewGuid())
 $metadataTemp = $null
 $binaryTemp = $null
 New-Item -ItemType Directory -Path $temp | Out-Null
 try {
     $archive = Join-Path $temp $asset
-    $checksums = Join-Path $temp 'checksums.txt'
+    $checksums = Join-Path $temp $checksumsName
     Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile $archive
-    Invoke-WebRequest -UseBasicParsing -Uri "$base/checksums.txt" -OutFile $checksums
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/$checksumsName" -OutFile $checksums
     $line = Get-Content -LiteralPath $checksums | Where-Object { $_ -match "\s\*?$([regex]::Escape($asset))$" } | Select-Object -First 1
     if (-not $line) { throw "Checksum for $asset is missing" }
     $expected = ($line -split '\s+')[0]

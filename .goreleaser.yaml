@@ -27,6 +27,7 @@ checksum:
 
 release:
   extra_files:
+    - glob: ./.release/release-manifest.json
     - glob: ./scripts/install.sh
     - glob: ./scripts/install.ps1
 

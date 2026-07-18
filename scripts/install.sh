@@ -4,7 +4,9 @@ set -eu
 repo="fjzhangZzzzzz/okit"
 okit_home="${OKIT_HOME:-$HOME/.okit}"
 install_dir="${OKIT_INSTALL_DIR:-$HOME/.local/bin}"
-version="${OKIT_VERSION:-}"
+requested_version="${OKIT_VERSION:-}"
+release_root="${OKIT_RELEASE_BASE_URL:-https://github.com/$repo/releases}"
+release_root=${release_root%/}
 
 case "$(uname -s)" in
   Linux) os=linux ;;
@@ -16,25 +18,49 @@ case "$(uname -m)" in
   *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
-if [ -z "$version" ]; then
-  version=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
-fi
-if ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
-  echo "invalid OKIT_VERSION: $version" >&2
+if [ -n "$requested_version" ] && ! printf '%s\n' "$requested_version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+  echo "invalid OKIT_VERSION: $requested_version" >&2
   exit 1
 fi
 
-plain_version=${version#v}
-asset="okit_${plain_version}_${os}_${arch}.tar.gz"
-base="https://github.com/$repo/releases/download/$version"
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/okit-install.XXXXXX")
 metadata_tmp=
 binary_tmp=
 trap 'rm -rf "$tmp"; [ -z "$metadata_tmp" ] || rm -f "$metadata_tmp"; [ -z "$binary_tmp" ] || rm -f "$binary_tmp"' EXIT HUP INT TERM
 
+if [ -n "$requested_version" ]; then
+  manifest_url="$release_root/download/$requested_version/release-manifest.json"
+else
+  manifest_url="$release_root/latest/download/release-manifest.json"
+fi
+curl -fsSL "$manifest_url" -o "$tmp/release-manifest.json"
+
+json_string() {
+  sed -n "s/^[[:space:]]*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\"[[:space:]]*,*[[:space:]]*$/\1/p" "$tmp/release-manifest.json" | head -n 1
+}
+schema=$(sed -n 's/^[[:space:]]*"schema"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*,*[[:space:]]*$/\1/p' "$tmp/release-manifest.json" | head -n 1)
+[ "$schema" = 1 ] || { echo "unsupported release manifest schema: $schema" >&2; exit 1; }
+version=$(json_string version)
+if ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+  echo "invalid version in release manifest: $version" >&2
+  exit 1
+fi
+if [ -n "$requested_version" ] && [ "$version" != "$requested_version" ]; then
+  echo "release manifest version $version does not match requested version $requested_version" >&2
+  exit 1
+fi
+target="$os-$arch"
+asset=$(json_string "$target")
+checksums_name=$(json_string checksums)
+case "$asset" in [0-9A-Za-z]* ) ;; *) echo "invalid or missing asset for $target" >&2; exit 1 ;; esac
+case "$asset" in *[!0-9A-Za-z._-]* ) echo "invalid asset filename: $asset" >&2; exit 1 ;; esac
+case "$checksums_name" in [0-9A-Za-z]* ) ;; *) echo "invalid checksums filename: $checksums_name" >&2; exit 1 ;; esac
+case "$checksums_name" in *[!0-9A-Za-z._-]* ) echo "invalid checksums filename: $checksums_name" >&2; exit 1 ;; esac
+base="$release_root/download/$version"
+
 curl -fsSL "$base/$asset" -o "$tmp/$asset"
-curl -fsSL "$base/checksums.txt" -o "$tmp/checksums.txt"
-expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/checksums.txt")
+curl -fsSL "$base/$checksums_name" -o "$tmp/$checksums_name"
+expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/$checksums_name")
 [ -n "$expected" ] || { echo "checksum for $asset is missing" >&2; exit 1; }
 if command -v sha256sum >/dev/null 2>&1; then
   actual=$(sha256sum "$tmp/$asset" | awk '{print $1}')

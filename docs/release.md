@@ -23,6 +23,7 @@ tag，不负责决定或创建版本号。
 
 - 各目标平台的版本化压缩包；
 - `checksums.txt`；
+- `release-manifest.json`；
 - `install.sh`；
 - `install.ps1`。
 
@@ -30,6 +31,11 @@ tag，不负责决定或创建版本号。
 `scripts/` 取得脚本并以固定资产名上传，使 `releases/latest/download/` 地址长期
 稳定。发布同时生成变更说明并包含许可证文件。二进制通过构建参数注入版本、提交号
 和构建时间，`okit --version` 必须能够显示这些信息。
+
+`release-manifest.json` 使用固定资产名，记录 tag、校验和文件名以及各系统架构对应的
+版本化压缩包。最新版通过 `releases/latest/download/release-manifest.json` 获取，
+固定版本通过 `releases/download/<tag>/release-manifest.json` 获取。公开安装流程不得
+调用 GitHub REST Releases API，避免共享出口 IP 的未认证限流。
 
 安装脚本必须写入 `$OKIT_HOME/install.json`（默认 `~/.okit/install.json`），记录
 版本、安装方式、可执行文件路径、
@@ -40,11 +46,12 @@ tag，不负责决定或创建版本号。
 
 1. 检出完整 Git 历史和 tag；
 2. 运行格式化检查、静态检查和 `go test ./...`；
-3. 使用 GoReleaser 构建、归档并生成校验和；
-4. 创建 GitHub Release，上传压缩包、校验和及两个安装脚本；
-5. 在干净的 Linux/Windows 环境执行安装冒烟测试；
-6. 从上一稳定版执行 `okit self update`，并验证内置卸载；
-7. 冒烟测试失败时将发布标记为失败，不更新安装入口。
+3. 根据 tag 生成并校验 `release-manifest.json`；
+4. 使用 GoReleaser 构建、归档并生成校验和；
+5. 创建 GitHub Release，上传压缩包、manifest、校验和及两个安装脚本；
+6. 在干净的 Linux/Windows 环境执行安装冒烟测试；
+7. 从上一稳定版执行 `okit self update`，并验证内置卸载；
+8. 冒烟测试失败时将发布标记为失败，不更新安装入口。
 
 工作流调用仓库中的 `scripts/smoke-release.sh` 和
 `scripts/smoke-release.ps1`，避免 Linux 与 Windows 的校验逻辑只存在于工作流内。
@@ -99,6 +106,7 @@ irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 |
 
 - `install.sh` 下载匹配 Linux 架构的压缩包，验证校验和后安装。
 - `install.ps1` 完成等价的 Windows 下载、校验和安装流程。
+- 安装器通过固定名称 manifest 解析最新版，不依赖 GitHub REST API 或用户 Token。
 - 安装脚本默认安装到用户可写目录，不隐式请求管理员权限。
 - 安装脚本必须支持固定版本；`latest` 只能解析最新正式版本，不选择预发布。
 - 固定版本通过 `OKIT_VERSION=vMAJOR.MINOR.PATCH`（PowerShell 为环境变量）选择。
@@ -116,6 +124,7 @@ GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个
 - 所有目标压缩包均包含单个可执行文件、README 和 LICENSE；
 - 校验和可验证；
 - Release 中存在固定名称的 `install.sh` 和 `install.ps1`；
+- Release 中存在合法的 `release-manifest.json`，且列出的资产全部存在；
 - README 中的一键安装命令能够从 Release 资产完成全新安装和升级；
 - 安装脚本拒绝校验和不匹配的压缩包；
 - 从上一稳定版自升级成功，损坏产物和中断场景能够回滚；

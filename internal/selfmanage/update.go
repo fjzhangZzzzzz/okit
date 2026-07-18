@@ -84,7 +84,8 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 		if arch == "" {
 			arch = runtime.GOARCH
 		}
-		u.Source = GitHubSource{GOOS: goos, GOARCH: arch, Client: &http.Client{Timeout: 30 * time.Second}}
+		client := &http.Client{Timeout: 30 * time.Second}
+		u.Source = defaultReleaseSource(options, goos, arch, client)
 	}
 	releases, err := u.Source.Releases(ctx)
 	if err != nil {
@@ -151,6 +152,13 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 	}
 	result.Updated, result.Scheduled = true, scheduled
 	return result, nil
+}
+
+func defaultReleaseSource(options UpdateOptions, goos, goarch string, client *http.Client) ReleaseSource {
+	if options.Prerelease && options.Version == "" {
+		return GitHubSource{GOOS: goos, GOARCH: goarch, Client: client}
+	}
+	return ManifestSource{GOOS: goos, GOARCH: goarch, Version: options.Version, Client: client}
 }
 
 func (u *Updater) metadata() (Metadata, error) {

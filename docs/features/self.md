@@ -21,7 +21,10 @@ okit self uninstall --purge --yes
 
 - 默认检查并安装最新稳定版；`--prerelease` 才允许选择预发布版。
 - `--version` 选择明确版本；只有显式指定较旧版本时才允许降级。
-- 根据当前 OS 和架构下载 GitHub Release 压缩包及 `checksums.txt`。
+- 稳定最新版和显式版本通过固定名称 `release-manifest.json` 解析版本及当前 OS、架构
+  的压缩包，不调用 GitHub REST API。只有未指定版本的 `--prerelease` 需要枚举
+  Releases，并在存在 `GH_TOKEN` 或 `GITHUB_TOKEN` 时使用认证请求。
+- 根据 manifest 下载 GitHub Release 压缩包及 `checksums.txt`。
 - 下载内容先进入临时目录，通过 SHA-256 校验后才能替换当前程序。
 - 使用安装锁阻止并发升级；替换失败时保留或恢复原版本。
 - `--check` 只报告当前版和可用版本；`--dry-run` 展示完整计划，两者都不写文件。
@@ -63,3 +66,5 @@ Scoop、WinGet、deb、rpm 等包管理器安装必须拒绝内置升级和卸�
 - `SELF-009`：只移除安装元数据记录的 PATH 项和托管文件。
 - `SELF-010`：包管理器安装被拒绝并得到正确提示。
 - `SELF-011`：check 和 dry-run 不产生持久化副作用。
+- `SELF-012`：稳定最新版和显式版本更新不依赖 GitHub REST API，并拒绝 schema、
+  版本、目标或资产文件名不合法的 manifest。
