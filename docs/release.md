@@ -46,6 +46,41 @@ tag，不负责决定或创建版本号。
 6. 从上一稳定版执行 `okit self update`，并验证内置卸载；
 7. 冒烟测试失败时将发布标记为失败，不更新安装入口。
 
+工作流调用仓库中的 `scripts/smoke-release.sh` 和
+`scripts/smoke-release.ps1`，避免 Linux 与 Windows 的校验逻辑只存在于工作流内。
+冒烟失败必须显示测试阶段、二进制路径、期望版本和 `okit --version` 的实际输出。
+
+## 本地冒烟测试
+
+发布前可对本地构建执行版本、帮助、核心命令及卸载生命周期检查。测试使用临时目录，
+不会修改用户现有的 `OKIT_HOME` 或安装目录：
+
+Linux：
+
+```sh
+go build -ldflags "-X main.version=v2.0.0" -o ./okit-smoke ./cmd/okit
+sh scripts/smoke-release.sh --binary ./okit-smoke --version v2.0.0
+```
+
+Windows PowerShell：
+
+```powershell
+go build -ldflags "-X main.version=v2.0.0" -o ./okit-smoke.exe ./cmd/okit
+scripts/smoke-release.ps1 -Mode binary -Binary ./okit-smoke.exe -Version v2.0.0
+```
+
+对已经发布的版本运行完整下载安装和跨版本升级检查：
+
+```sh
+sh scripts/smoke-release.sh --release --version v2.0.0
+```
+
+```powershell
+scripts/smoke-release.ps1 -Mode release -Version v2.0.0
+```
+
+release 模式需要 GitHub CLI 和网络访问；binary 模式不验证 GitHub Release 上传环节。
+
 ## 安装入口
 
 产品对外提供以下稳定命令：

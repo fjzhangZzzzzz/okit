@@ -39,13 +39,24 @@ func TestGoReleaserBuildsDocumentedMatrixAndPublishesInstallers(t *testing.T) {
 			t.Errorf("GoReleaser configuration does not contain %q", required)
 		}
 	}
+	if !strings.Contains(content, "main.version={{.Tag}}") {
+		t.Error("GoReleaser must inject the v-prefixed tag into the binary version")
+	}
 }
 
 func TestReleaseWorkflowRunsInstallUpdateAndUninstallSmokeTests(t *testing.T) {
 	content := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"smoke-linux", "smoke-windows", "self update", "self uninstall", "--dry-run"} {
+	for _, required := range []string{"smoke-linux", "smoke-windows", "smoke-release.sh", "smoke-release.ps1", "--release"} {
 		if !strings.Contains(content, required) {
 			t.Errorf("release workflow does not contain %q", required)
+		}
+	}
+	for _, file := range []string{"smoke-release.sh", "smoke-release.ps1"} {
+		smoke := repositoryFile(t, "scripts", file)
+		for _, required := range []string{"binary", "release", "self update", "self uninstall", "--dry-run", "actual output"} {
+			if !strings.Contains(smoke, required) {
+				t.Errorf("%s does not contain %q", file, required)
+			}
 		}
 	}
 }
