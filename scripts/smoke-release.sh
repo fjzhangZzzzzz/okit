@@ -101,6 +101,7 @@ assert_version
 
 log "Run command smoke checks"
 "$executable" --help
+"$executable" info --format json
 "$executable" hex "$repo_root/LICENSE" --length 16
 
 log "Verify uninstall preserves user data"

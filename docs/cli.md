@@ -8,8 +8,8 @@
 - 命令采用“名词功能 + 动词动作”的结构，名称使用小写 kebab-case。
 - 帮助和正常结果写入 stdout；诊断、警告和错误写入 stderr。
 - 成功返回 `0`；使用错误返回 `2`；运行失败返回 `1`；部分成功返回 `3`。
-- `--format table|json|csv` 只作用于明确声明支持格式选择的命令；当前为
-  `pe inspect`。不支持的组合返回使用错误。
+- `--format table|json|csv` 只作用于明确声明支持格式选择的命令；`pe inspect`
+  支持三种格式，`info` 支持 `table|json`。不支持的组合返回使用错误。
 - 颜色只能作为非语义增强，任何输出都不得依赖颜色才能理解；`--no-color` 和
   `NO_COLOR` 保证关闭颜色。
 - `--quiet` 只输出结果和错误；`--verbose` 输出诊断信息，两者互斥。
@@ -32,6 +32,7 @@
 
 ```text
 okit
+├── info
 ├── hex <file...>
 ├── pe
 │   └── inspect <file...>
@@ -64,6 +65,15 @@ okit
 ```
 
 ## 命令参数
+
+### `okit info`
+
+```text
+okit info [--format table|json]
+```
+
+仅采集本地构建、路径和安装状态，不检查网络更新。完整语义参见
+[`features/info.md`](features/info.md)。
 
 ### `okit hex`
 

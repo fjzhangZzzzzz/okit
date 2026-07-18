@@ -10,6 +10,7 @@ Linux/Windows 发布产物。
 
 | 命令 | 用途 | 平台 |
 | --- | --- | --- |
+| `okit info` | 查看运行时、安装目录和 PATH 解析状态 | Linux / Windows |
 | `okit hex` | 以十六进制、八进制、字符等格式查看文件 | Linux / Windows |
 | `okit pe` | 查看 PE 可执行文件的头部和节信息 | Linux / Windows |
 | `okit git-sync` | 将 Git 工作区中的变更文件同步到远端 | Linux / Windows |
@@ -23,6 +24,7 @@ Linux/Windows 发布产物。
 ## 命令概览
 
 ```text
+okit info [--format json]
 okit hex <file...>
 okit pe inspect <file...>
 okit git-sync run <path...>
@@ -64,7 +66,7 @@ SHA-256 校验和并安装到用户目录。
 - [测试与 TDD](docs/testing.md)
 - [发布规范](docs/release.md)
 - 功能规范：[hex](docs/features/hex.md)、[pe](docs/features/pe.md)、
-  [git-sync](docs/features/git-sync.md)、[shell](docs/features/shell.md)、
+  [info](docs/features/info.md)、[git-sync](docs/features/git-sync.md)、[shell](docs/features/shell.md)、
   [mobaxterm](docs/features/mobaxterm.md)、[self](docs/features/self.md)
 - 架构决策：[ADR](docs/adr/)
 

@@ -62,7 +62,7 @@ func TestReleaseWorkflowRunsInstallUpdateAndUninstallSmokeTests(t *testing.T) {
 	}
 	for _, file := range []string{"smoke-release.sh", "smoke-release.ps1"} {
 		smoke := repositoryFile(t, "scripts", file)
-		for _, required := range []string{"binary", "release", "self update", "self uninstall", "--dry-run", "actual output"} {
+		for _, required := range []string{"binary", "release", "self update", "self uninstall", "info --format json", "--dry-run", "actual output"} {
 			if !strings.Contains(smoke, required) {
 				t.Errorf("%s does not contain %q", file, required)
 			}

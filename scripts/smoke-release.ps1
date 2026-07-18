@@ -97,6 +97,8 @@ try {
     Write-Phase 'Run command smoke checks'
     & $executable --help
     if ($LASTEXITCODE -ne 0) { Fail '--help failed' }
+    & $executable info --format json
+    if ($LASTEXITCODE -ne 0) { Fail 'info smoke check failed' }
     & $executable hex (Join-Path $repoRoot 'LICENSE') --length 16
     if ($LASTEXITCODE -ne 0) { Fail 'hex smoke check failed' }
 

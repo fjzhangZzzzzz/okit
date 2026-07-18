@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fjzhangZzzzzz/okit/internal/appinfo"
 	"github.com/fjzhangZzzzzz/okit/internal/config"
 	"github.com/fjzhangZzzzzz/okit/internal/gitsync"
 	hexdump "github.com/fjzhangZzzzzz/okit/internal/hex"
@@ -73,6 +74,8 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 	if global.format != "" && global.format != "table" {
 		if len(args) >= 2 && args[0] == "pe" && args[1] == "inspect" {
 			args = append(args, "--format", global.format)
+		} else if len(args) >= 1 && args[0] == "info" {
+			// info receives the global format directly.
 		} else {
 			fmt.Fprintf(stderr, "--format %s is not supported by this command\n", global.format)
 			return 2
@@ -90,6 +93,8 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	switch args[0] {
+	case "info":
+		return a.runInfo(args[1:], global.format, stdout, stderr)
 	case "hex":
 		return runHex(args[1:], stdout, stderr)
 	case "pe":
@@ -106,6 +111,48 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
 		return 2
 	}
+}
+
+func (a *App) runInfo(args []string, format string, stdout, stderr io.Writer) int {
+	if format == "" {
+		format = "table"
+	}
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--format":
+			index++
+			if index >= len(args) {
+				fmt.Fprintln(stderr, "--format requires a value")
+				return 2
+			}
+			format = args[index]
+		case "--help", "-h":
+			fmt.Fprintln(stdout, "Usage: okit info [--format table|json]")
+			return 0
+		default:
+			fmt.Fprintf(stderr, "unknown info option %q\n", args[index])
+			return 2
+		}
+	}
+	if format != "table" && format != "json" {
+		fmt.Fprintf(stderr, "--format %s is not supported by info\n", format)
+		return 2
+	}
+	collector := appinfo.NewCollector(appinfo.Build{Version: a.version, Commit: a.commit, Built: a.date})
+	info, err := collector.Collect()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if format == "json" {
+		if err := appinfo.WriteJSON(stdout, info); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	}
+	appinfo.WriteText(stdout, stderr, info)
+	return 0
 }
 
 type globalOptions struct {
@@ -1054,6 +1101,7 @@ Usage:
   okit <command> [options]
 
 Commands:
+  info         display runtime and installation status
   hex          display file bytes
   pe           inspect PE files
   git-sync     synchronize Git changes

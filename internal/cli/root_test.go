@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,10 +20,61 @@ func TestRootHelpListsDocumentedCommands(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
 	}
-	for _, command := range []string{"hex", "pe", "git-sync", "shell", "mobaxterm", "self"} {
+	for _, command := range []string{"info", "hex", "pe", "git-sync", "shell", "mobaxterm", "self"} {
 		if !strings.Contains(stdout.String(), command) {
 			t.Errorf("help does not contain %q: %s", command, stdout.String())
 		}
+	}
+}
+
+func TestInfoTextAndJSON_INFO006(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OKIT_HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte("token: supersecret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := NewBuild("v2.0.0", "abc123", "2026-07-18")
+	var stdout, stderr bytes.Buffer
+	if code := app.Run([]string{"info"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("text code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, value := range []string{"version", "v2.0.0", "executable", "data-dir", "path-status", "metadata-status"} {
+		if !strings.Contains(stdout.String(), value) {
+			t.Errorf("text output does not contain %q: %s", value, stdout.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "supersecret") || strings.Contains(stderr.String(), "supersecret") {
+		t.Fatal("info leaked configuration content")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.Run([]string{"info", "--format", "json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid JSON: %v: %s", err, stdout.String())
+	}
+	if payload["version"] != "v2.0.0" || payload["commit"] != "abc123" || payload["built"] != "2026-07-18" {
+		t.Fatalf("payload=%v", payload)
+	}
+	if _, ok := payload["warnings"].([]any); !ok || stderr.Len() != 0 {
+		t.Fatalf("warnings=%T stderr=%q", payload["warnings"], stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.Run([]string{"--format", "json", "info"}, &stdout, &stderr); code != 0 || json.Unmarshal(stdout.Bytes(), &payload) != nil {
+		t.Fatalf("global format code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestInfoRejectsCSVFormat(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := New("dev").Run([]string{"info", "--format", "csv"}, &stdout, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "not supported") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
 

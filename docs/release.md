@@ -129,5 +129,5 @@ GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个
 - 安装脚本拒绝校验和不匹配的压缩包；
 - 从上一稳定版自升级成功，损坏产物和中断场景能够回滚；
 - 默认卸载保留用户数据，`--purge` 仅删除经过验证的 `OKIT_HOME`；
-- `--help`、`hex`、`pe inspect` 的只读冒烟测试通过；
+- `--help`、`info --format json`、`hex`、`pe inspect` 的只读冒烟测试通过；
 - MobaXterm 命令只包含在 Windows 可执行文件的可用路径中。
