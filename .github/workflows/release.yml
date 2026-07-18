@@ -36,12 +36,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OKIT_VERSION: ${{ github.ref_name }}
-      OKIT_HOME: ${{ runner.temp }}/okit-home
-      OKIT_INSTALL_DIR: ${{ runner.temp }}/okit-bin
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
       - name: Install and inspect lifecycle plan
+        env:
+          OKIT_HOME: ${{ runner.temp }}/okit-home
+          OKIT_INSTALL_DIR: ${{ runner.temp }}/okit-bin
         run: |
           current="$OKIT_VERSION"
           previous=$(gh api "repos/${{ github.repository }}/releases" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | grep -vx "$current" | head -n 1 || true)
@@ -65,13 +66,14 @@ jobs:
     runs-on: windows-latest
     env:
       OKIT_VERSION: ${{ github.ref_name }}
-      OKIT_HOME: ${{ runner.temp }}\okit-home
-      OKIT_INSTALL_DIR: ${{ runner.temp }}\okit-bin
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
       - name: Install and inspect lifecycle plan
         shell: pwsh
+        env:
+          OKIT_HOME: ${{ runner.temp }}\okit-home
+          OKIT_INSTALL_DIR: ${{ runner.temp }}\okit-bin
         run: |
           $current = $env:OKIT_VERSION
           $releases = gh api "repos/${{ github.repository }}/releases" | ConvertFrom-Json
