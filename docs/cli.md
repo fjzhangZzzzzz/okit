@@ -1,0 +1,147 @@
+# CLI 规范
+
+本文档定义 Go 版本 `okit` 的稳定命令契约。功能细节和验收条件由
+[`features/`](features/) 下的文档补充。
+
+## 通用约定
+
+- 命令采用“名词功能 + 动词动作”的结构，名称使用小写 kebab-case。
+- 帮助和正常结果写入 stdout；诊断、警告和错误写入 stderr。
+- 成功返回 `0`；使用错误返回 `2`；运行失败返回 `1`；部分成功返回 `3`。
+- `--format table|json|csv` 只作用于明确声明支持格式选择的命令；当前为
+  `pe inspect`。不支持的组合返回使用错误。
+- 颜色只能作为非语义增强，任何输出都不得依赖颜色才能理解；`--no-color` 和
+  `NO_COLOR` 保证关闭颜色。
+- `--quiet` 只输出结果和错误；`--verbose` 输出诊断信息，两者互斥。
+- 会修改文件或远端状态的命令应先校验全部输入；支持 `--dry-run` 的命令不得在
+  dry-run 模式产生持久化变更。
+- `--force` 只跳过交互确认，不跳过参数、安全或权限校验。
+
+全局参数：
+
+```text
+--format table|json|csv
+--no-color
+--quiet
+--verbose
+--version
+--help
+```
+
+## 命令树
+
+```text
+okit
+├── hex <file...>
+├── pe
+│   └── inspect <file...>
+├── git-sync
+│   ├── run <path...>
+│   ├── status
+│   └── config <get|set|list>
+├── shell
+│   ├── sync <shell>
+│   ├── source <shell>
+│   ├── enable <shell>
+│   ├── disable <shell>
+│   ├── status <shell>
+│   └── config <get|set|list>
+├── mobaxterm
+    ├── status
+    ├── theme
+    │   ├── list
+    │   ├── apply <name>
+    │   ├── restore
+    │   └── cache <update|clean|status>
+    └── license
+        ├── generate
+        ├── deploy
+        ├── inspect
+        └── verify
+└── self
+    ├── update
+    └── uninstall
+```
+
+## 命令参数
+
+### `okit hex`
+
+```text
+okit hex <file...> [--display canonical|hex|octal|char|decimal]
+                     [--word-size 1|2] [--skip N] [--length N]
+                     [--no-squeeze]
+```
+
+默认为 `canonical`。`--skip` 和 `--length` 使用字节数，必须为非负整数。
+
+### `okit pe inspect`
+
+```text
+okit pe inspect <file...> [--format table|json|csv]
+```
+
+### `okit git-sync`
+
+```text
+okit git-sync run <path...> --host HOST --target-root PATH
+    [--user USER] [--port PORT] [--transport auto|rsync|sftp]
+    [--dry-run]
+okit git-sync status
+okit git-sync config get <key>
+okit git-sync config set <key> <value>
+okit git-sync config list
+```
+
+完整同步语义参见 [`features/git-sync.md`](features/git-sync.md)。
+
+### `okit shell`
+
+```text
+okit shell sync <bash|zsh|powershell|cmd> [--dry-run]
+okit shell source <bash|zsh|powershell|cmd>
+okit shell enable <bash|zsh|powershell|cmd> [--dry-run] [--force]
+okit shell disable <bash|zsh|powershell|cmd> [--dry-run] [--force]
+okit shell status <bash|zsh|powershell|cmd>
+okit shell config get <key>
+okit shell config set <key> <value>
+okit shell config list
+```
+
+### `okit mobaxterm`
+
+```text
+okit mobaxterm status
+okit mobaxterm theme list [--search TEXT] [--limit N]
+okit mobaxterm theme apply <name> [--no-backup] [--force] [--dry-run]
+okit mobaxterm theme restore [--backup FILE] [--force] [--dry-run]
+okit mobaxterm theme cache update|clean|status
+okit mobaxterm license generate --username NAME --version VERSION --output FILE
+okit mobaxterm license deploy --username NAME [--version VERSION] [--force] [--dry-run]
+okit mobaxterm license inspect <file-or-key>
+okit mobaxterm license verify <file-or-key> --username NAME --version VERSION
+```
+
+完整行为参见 [`features/mobaxterm.md`](features/mobaxterm.md)。
+
+### `okit self`
+
+```text
+okit self update [--check] [--version VERSION] [--prerelease] [--dry-run]
+okit self uninstall [--purge] [--yes] [--dry-run]
+```
+
+`--check` 只检查是否存在更新；`--version` 接受带 `v` 的语义化版本。完整生命周期
+行为参见 [`features/self.md`](features/self.md)。
+
+## 配置与环境
+
+- `OKIT_HOME`：覆盖数据根目录，默认 `~/.okit`。
+- `NO_COLOR`：存在且非空时禁用颜色。
+- 配置键使用点分层级，例如 `git-sync.host`。
+- 密码、私钥内容和访问令牌不得写入普通配置文件或日志。
+
+## 兼容性
+
+Go 版本不保证兼容旧 Python 命令名称。首次稳定版本发布后，已有命令和退出码按
+语义化版本管理；破坏性变更必须提升主版本并更新本规范。

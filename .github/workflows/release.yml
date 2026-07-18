@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify
+        run: |
+          test -z "$(gofmt -l .)"
+          go test ./...
+          go vet ./...
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  smoke-linux:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      OKIT_VERSION: ${{ github.ref_name }}
+      OKIT_HOME: ${{ runner.temp }}/okit-home
+      OKIT_INSTALL_DIR: ${{ runner.temp }}/okit-bin
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install and inspect lifecycle plan
+        run: |
+          current="$OKIT_VERSION"
+          previous=$(gh api "repos/${{ github.repository }}/releases" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | grep -vx "$current" | head -n 1 || true)
+          if [ -n "$previous" ]; then
+            OKIT_VERSION="$previous" sh scripts/install.sh
+            "$OKIT_INSTALL_DIR/okit" self update --version "$current"
+          else
+            sh scripts/install.sh
+          fi
+          "$OKIT_INSTALL_DIR/okit" --version | grep -F "$current"
+          "$OKIT_INSTALL_DIR/okit" --help
+          "$OKIT_INSTALL_DIR/okit" hex LICENSE --length 16
+          touch "$OKIT_HOME/user-data"
+          "$OKIT_INSTALL_DIR/okit" self uninstall --dry-run
+          "$OKIT_INSTALL_DIR/okit" self uninstall
+          test ! -e "$OKIT_INSTALL_DIR/okit"
+          test -e "$OKIT_HOME/user-data"
+
+  smoke-windows:
+    needs: release
+    runs-on: windows-latest
+    env:
+      OKIT_VERSION: ${{ github.ref_name }}
+      OKIT_HOME: ${{ runner.temp }}\okit-home
+      OKIT_INSTALL_DIR: ${{ runner.temp }}\okit-bin
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install and inspect lifecycle plan
+        shell: pwsh
+        run: |
+          $current = $env:OKIT_VERSION
+          $releases = gh api "repos/${{ github.repository }}/releases" | ConvertFrom-Json
+          $previous = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -ne $current } | Select-Object -First 1
+          if ($previous) {
+            $env:OKIT_VERSION = $previous.tag_name
+            & scripts/install.ps1
+            & "$env:OKIT_INSTALL_DIR\okit.exe" self update --version $current
+            for ($attempt = 0; $attempt -lt 20; $attempt++) {
+              Start-Sleep -Milliseconds 250
+              if (Test-Path "$env:OKIT_INSTALL_DIR\okit.exe") {
+                $reported = & "$env:OKIT_INSTALL_DIR\okit.exe" --version
+                if ($reported -match [regex]::Escape($current)) { break }
+              }
+            }
+            if (-not (($reported -join "`n") -match [regex]::Escape($current))) { throw 'self update did not install the tagged version' }
+            $env:OKIT_VERSION = $current
+          } else {
+            & scripts/install.ps1
+          }
+          $versionOutput = & "$env:OKIT_INSTALL_DIR\okit.exe" --version
+          if (-not (($versionOutput -join "`n") -match [regex]::Escape($current))) { throw 'installed version does not match the tag' }
+          & "$env:OKIT_INSTALL_DIR\okit.exe" --help
+          & "$env:OKIT_INSTALL_DIR\okit.exe" hex LICENSE --length 16
+          New-Item -ItemType File -Path "$env:OKIT_HOME\user-data" | Out-Null
+          & "$env:OKIT_INSTALL_DIR\okit.exe" self uninstall --dry-run
+          & "$env:OKIT_INSTALL_DIR\okit.exe" self uninstall
+          for ($attempt = 0; $attempt -lt 20 -and (Test-Path "$env:OKIT_INSTALL_DIR\okit.exe"); $attempt++) { Start-Sleep -Milliseconds 250 }
+          if (Test-Path "$env:OKIT_INSTALL_DIR\okit.exe") { throw 'okit.exe was not uninstalled' }
+          if (-not (Test-Path "$env:OKIT_HOME\user-data")) { throw 'default uninstall removed user data' }

@@ -1,0 +1,5 @@
+.tmp/
+dist/
+okit
+okit.exe
+!cmd/okit
