@@ -27,3 +27,22 @@ jobs:
         run: go test ./...
       - name: Vet
         run: go vet ./...
+      - name: Linux runtime smoke test
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/okit-runtime"
+          go build -o "$RUNNER_TEMP/okit-runtime/okit" ./cmd/okit
+          sh scripts/smoke-runtime-linux.sh --executable "$RUNNER_TEMP/okit-runtime/okit" --version dev
+      - name: Windows runtime smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = Join-Path $env:RUNNER_TEMP 'okit-runtime\okit.exe'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $binary) | Out-Null
+          go build -o $binary ./cmd/okit
+          scripts/smoke-runtime-windows.ps1 -Executable $binary -Version dev
+      - name: Windows Git Bash runtime smoke test
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bash scripts/smoke-runtime-windows-git-bash.sh --executable "$RUNNER_TEMP/okit-runtime/okit.exe" --version dev

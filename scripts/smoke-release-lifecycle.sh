@@ -4,8 +4,8 @@ set -eu
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/smoke-release.sh --release --version vMAJOR.MINOR.PATCH
-  scripts/smoke-release.sh --binary PATH --version vMAJOR.MINOR.PATCH
+  scripts/smoke-release-lifecycle.sh --release --version vMAJOR.MINOR.PATCH
+  scripts/smoke-release-lifecycle.sh --binary PATH --version vMAJOR.MINOR.PATCH
 
 Environment:
   OKIT_HOME, OKIT_INSTALL_DIR  override the isolated test directories
@@ -99,9 +99,10 @@ fi
 
 assert_version
 
-log "Run command smoke checks"
-"$executable" --help
-"$executable" info --format json
+log "Run installed binary runtime smoke"
+sh "$script_dir/smoke-runtime-linux.sh" --executable "$executable" --version "$version"
+
+log "Run release lifecycle command checks"
 "$executable" hex "$repo_root/LICENSE" --length 16
 
 log "Verify uninstall preserves user data"
@@ -111,4 +112,4 @@ touch "$okit_home/user-data"
 [ ! -e "$executable" ] || fail "executable was not uninstalled: $executable"
 [ -e "$okit_home/user-data" ] || fail "default uninstall removed user data"
 
-log "Smoke test passed"
+log "Release lifecycle smoke test passed"

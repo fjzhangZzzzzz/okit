@@ -13,7 +13,7 @@ import (
 
 func Home() (string, error) {
 	if home := os.Getenv("OKIT_HOME"); home != "" {
-		return filepath.Clean(home), nil
+		return normalizeHomeOverride(home)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

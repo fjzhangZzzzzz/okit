@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/fjzhangZzzzzz/okit/internal/config"
 	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
@@ -48,9 +47,11 @@ type Info struct {
 }
 
 type Collector struct {
-	Build        Build
-	GOOS         string
-	GOARCH       string
+	Build  Build
+	system collectorSystem
+}
+
+type collectorSystem struct {
 	Executable   func() (string, error)
 	LookPath     func(string) (string, error)
 	Home         func() (string, error)
@@ -59,37 +60,34 @@ type Collector struct {
 	LoadMetadata func(string) (selfmanage.Metadata, error)
 }
 
+type snapshot struct {
+	Build         Build
+	Platform      string
+	Executable    string
+	InstallDir    string
+	Resolved      string
+	PathLookupErr error
+	PathEntries   []string
+	DataDir       string
+	ConfigFile    string
+	ConfigExists  bool
+	ConfigError   error
+	MetadataFile  string
+	Metadata      selfmanage.Metadata
+	MetadataError error
+}
+
 func NewCollector(build Build) Collector {
-	return Collector{Build: build}
+	return Collector{Build: build, system: nativeSystem()}
 }
 
 func (c Collector) Collect() (Info, error) {
-	if c.GOOS == "" {
-		c.GOOS = runtime.GOOS
-	}
-	if c.GOARCH == "" {
-		c.GOARCH = runtime.GOARCH
-	}
-	if c.Executable == nil {
-		c.Executable = os.Executable
-	}
-	if c.LookPath == nil {
-		c.LookPath = exec.LookPath
-	}
-	if c.Home == nil {
-		c.Home = config.Home
-	}
-	if c.Getenv == nil {
-		c.Getenv = os.Getenv
-	}
-	if c.Stat == nil {
-		c.Stat = os.Stat
-	}
-	if c.LoadMetadata == nil {
-		c.LoadMetadata = selfmanage.LoadMetadata
+	system := c.system
+	if system.Executable == nil {
+		system = nativeSystem()
 	}
 
-	executable, err := c.Executable()
+	executable, err := system.Executable()
 	if err != nil {
 		return Info{}, fmt.Errorf("resolve executable: %w", err)
 	}
@@ -97,7 +95,7 @@ func (c Collector) Collect() (Info, error) {
 	if err != nil {
 		return Info{}, fmt.Errorf("resolve executable: %w", err)
 	}
-	home, err := c.Home()
+	home, err := system.Home()
 	if err != nil {
 		return Info{}, err
 	}
@@ -106,42 +104,68 @@ func (c Collector) Collect() (Info, error) {
 		return Info{}, fmt.Errorf("resolve data directory: %w", err)
 	}
 
+	state := snapshot{
+		Build:        c.Build,
+		Platform:     runtime.GOOS + "/" + runtime.GOARCH,
+		Executable:   executable,
+		InstallDir:   filepath.Dir(executable),
+		PathEntries:  filepath.SplitList(system.Getenv("PATH")),
+		DataDir:      home,
+		ConfigFile:   filepath.Join(home, "config.yaml"),
+		MetadataFile: filepath.Join(home, "install.json"),
+	}
+
+	for _, name := range executableNames() {
+		state.Resolved, state.PathLookupErr = system.LookPath(name)
+		if state.PathLookupErr == nil && state.Resolved != "" {
+			break
+		}
+	}
+	if state.Resolved != "" {
+		if absolute, err := absolutePath(state.Resolved); err == nil {
+			state.Resolved = absolute
+		}
+	}
+	if _, err := system.Stat(state.ConfigFile); err == nil {
+		state.ConfigExists = true
+	} else {
+		state.ConfigError = err
+	}
+	state.Metadata, state.MetadataError = system.LoadMetadata(home)
+	return diagnose(state, sameNativePath), nil
+}
+
+func diagnose(state snapshot, equalPath func(string, string) bool) Info {
 	info := Info{
-		Version:        c.Build.Version,
-		Commit:         c.Build.Commit,
-		Built:          c.Build.Built,
-		Platform:       c.GOOS + "/" + c.GOARCH,
-		Executable:     executable,
-		InstallDir:     filepath.Dir(executable),
-		DataDir:        home,
-		ConfigFile:     filepath.Join(home, "config.yaml"),
-		MetadataFile:   filepath.Join(home, "install.json"),
+		Version:        state.Build.Version,
+		Commit:         state.Build.Commit,
+		Built:          state.Build.Built,
+		Platform:       state.Platform,
+		Executable:     state.Executable,
+		InstallDir:     state.InstallDir,
+		Resolved:       state.Resolved,
+		DataDir:        state.DataDir,
+		ConfigFile:     state.ConfigFile,
+		ConfigExists:   state.ConfigExists,
+		MetadataFile:   state.MetadataFile,
 		MetadataStatus: "missing",
 		Warnings:       make([]Warning, 0),
 	}
 
-	resolved, lookErr := c.LookPath("okit")
-	if c.GOOS == "windows" && (lookErr != nil || resolved == "") {
-		resolved, lookErr = c.LookPath("okit.exe")
-	}
-	if lookErr != nil || resolved == "" {
+	if state.PathLookupErr != nil || state.Resolved == "" {
 		info.PathStatus = "missing"
 		info.addWarning("PATH_MISSING", "okit is not available through the current PATH")
 	} else {
-		if absolute, err := absolutePath(resolved); err == nil {
-			resolved = absolute
-		}
-		info.Resolved = resolved
-		if samePath(c.GOOS, executable, resolved) {
+		if equalPath(state.Executable, state.Resolved) {
 			info.PathStatus = "ok"
 		} else {
 			info.PathStatus = "shadowed"
-			info.addWarning("PATH_SHADOWED", fmt.Sprintf("PATH resolves okit to %s instead of %s", resolved, executable))
+			info.addWarning("PATH_SHADOWED", fmt.Sprintf("PATH resolves okit to %s instead of %s", state.Resolved, state.Executable))
 		}
 	}
 
-	for _, entry := range filepath.SplitList(c.Getenv("PATH")) {
-		if samePath(c.GOOS, info.InstallDir, entry) {
+	for _, entry := range state.PathEntries {
+		if equalPath(info.InstallDir, entry) {
 			info.InstallDirInPath = true
 			break
 		}
@@ -150,34 +174,42 @@ func (c Collector) Collect() (Info, error) {
 		info.addWarning("INSTALL_DIR_NOT_IN_PATH", fmt.Sprintf("install directory %s is not in the current PATH", info.InstallDir))
 	}
 
-	if _, err := c.Stat(info.ConfigFile); err == nil {
-		info.ConfigExists = true
-	} else if !errors.Is(err, os.ErrNotExist) {
+	if state.ConfigError != nil && !errors.Is(state.ConfigError, os.ErrNotExist) {
 		info.addWarning("CONFIG_UNREADABLE", fmt.Sprintf("cannot inspect config file %s", info.ConfigFile))
 	}
 
-	metadata, err := c.LoadMetadata(home)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+	if state.MetadataError != nil {
+		if errors.Is(state.MetadataError, os.ErrNotExist) {
 			info.MetadataStatus = "missing"
 			info.addWarning("METADATA_MISSING", fmt.Sprintf("install metadata is missing at %s", info.MetadataFile))
 		} else {
 			info.MetadataStatus = "invalid"
 			info.addWarning("METADATA_INVALID", fmt.Sprintf("install metadata cannot be read at %s", info.MetadataFile))
 		}
-		return info, nil
+		return info
 	}
 	info.MetadataStatus = "ok"
-	info.InstallMethod = metadata.Method
-	info.InstallChannel = metadata.Channel
-	info.InstallVersion = metadata.Version
-	if metadata.Executable != "" && !samePath(c.GOOS, executable, metadata.Executable) {
-		info.addWarning("METADATA_EXECUTABLE_MISMATCH", fmt.Sprintf("install metadata points to %s", metadata.Executable))
+	info.InstallMethod = state.Metadata.Method
+	info.InstallChannel = state.Metadata.Channel
+	info.InstallVersion = state.Metadata.Version
+	if state.Metadata.Executable != "" && !equalPath(state.Executable, state.Metadata.Executable) {
+		info.addWarning("METADATA_EXECUTABLE_MISMATCH", fmt.Sprintf("install metadata points to %s", state.Metadata.Executable))
 	}
-	if metadata.Version != "" && c.Build.Version != "" && metadata.Version != c.Build.Version {
-		info.addWarning("METADATA_VERSION_MISMATCH", fmt.Sprintf("install metadata version %s differs from binary version %s", metadata.Version, c.Build.Version))
+	if state.Metadata.Version != "" && state.Build.Version != "" && state.Metadata.Version != state.Build.Version {
+		info.addWarning("METADATA_VERSION_MISMATCH", fmt.Sprintf("install metadata version %s differs from binary version %s", state.Metadata.Version, state.Build.Version))
 	}
-	return info, nil
+	return info
+}
+
+func nativeSystem() collectorSystem {
+	return collectorSystem{
+		Executable:   os.Executable,
+		LookPath:     exec.LookPath,
+		Home:         config.Home,
+		Getenv:       os.Getenv,
+		Stat:         os.Stat,
+		LoadMetadata: selfmanage.LoadMetadata,
+	}
 }
 
 func WriteText(stdout, stderr io.Writer, info Info) {
@@ -227,18 +259,6 @@ func absolutePath(path string) (string, error) {
 		return evaluated, nil
 	}
 	return absolute, nil
-}
-
-func samePath(goos, left, right string) bool {
-	if left == "" || right == "" {
-		return false
-	}
-	left = filepath.Clean(left)
-	right = filepath.Clean(right)
-	if goos == "windows" {
-		return strings.EqualFold(left, right)
-	}
-	return left == right
 }
 
 func valueOrDash(value string) string {

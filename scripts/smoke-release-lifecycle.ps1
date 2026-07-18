@@ -94,11 +94,13 @@ try {
 
     Assert-Version
 
-    Write-Phase 'Run command smoke checks'
-    & $executable --help
-    if ($LASTEXITCODE -ne 0) { Fail '--help failed' }
-    & $executable info --format json
-    if ($LASTEXITCODE -ne 0) { Fail 'info smoke check failed' }
+    Write-Phase 'Run installed binary runtime smoke'
+    & (Join-Path $PSScriptRoot 'smoke-runtime-windows.ps1') -Executable $executable -Version $Version
+    if ($LASTEXITCODE -ne 0) { Fail 'Windows runtime smoke failed' }
+    & bash (Join-Path $PSScriptRoot 'smoke-runtime-windows-git-bash.sh') --executable $executable --version $Version
+    if ($LASTEXITCODE -ne 0) { Fail 'Windows Git Bash runtime smoke failed' }
+
+    Write-Phase 'Run release lifecycle command checks'
     & $executable hex (Join-Path $repoRoot 'LICENSE') --length 16
     if ($LASTEXITCODE -ne 0) { Fail 'hex smoke check failed' }
 
@@ -115,7 +117,7 @@ try {
     if (Test-Path -LiteralPath $executable) { Fail "executable was not uninstalled: $executable" }
     if (-not (Test-Path -LiteralPath (Join-Path $okitHome 'user-data'))) { Fail 'default uninstall removed user data' }
 
-    Write-Phase 'Smoke test passed'
+    Write-Phase 'Release lifecycle smoke test passed'
 }
 finally {
     if ($smokeRoot) { Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue }

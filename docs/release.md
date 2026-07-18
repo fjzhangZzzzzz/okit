@@ -53,9 +53,23 @@ tag，不负责决定或创建版本号。
 7. 从上一稳定版执行 `okit self update`，并验证内置卸载；
 8. 冒烟测试失败时将发布标记为失败，不更新安装入口。
 
-工作流调用仓库中的 `scripts/smoke-release.sh` 和
-`scripts/smoke-release.ps1`，避免 Linux 与 Windows 的校验逻辑只存在于工作流内。
+工作流调用仓库中的 `scripts/smoke-release-lifecycle.sh` 和
+`scripts/smoke-release-lifecycle.ps1`，避免 Linux 与 Windows 的生命周期校验逻辑只存在于工作流内。
+它们复用 `smoke-runtime-*` 脚本验证最终安装产物；普通 CI 也使用相同脚本验证源码构建产物。
 冒烟失败必须显示测试阶段、二进制路径、期望版本和 `okit --version` 的实际输出。
+
+运行时冒烟不执行安装、升级或卸载，可直接验证本地构建：
+
+```sh
+go build -o ./okit-runtime ./cmd/okit
+sh scripts/smoke-runtime-linux.sh --executable ./okit-runtime --version dev
+```
+
+```powershell
+go build -o ./okit-runtime.exe ./cmd/okit
+scripts/smoke-runtime-windows.ps1 -Executable ./okit-runtime.exe -Version dev
+bash scripts/smoke-runtime-windows-git-bash.sh --executable ./okit-runtime.exe --version dev
+```
 
 ## 本地冒烟测试
 
@@ -66,24 +80,24 @@ Linux：
 
 ```sh
 go build -ldflags "-X main.version=v2.0.0" -o ./okit-smoke ./cmd/okit
-sh scripts/smoke-release.sh --binary ./okit-smoke --version v2.0.0
+sh scripts/smoke-release-lifecycle.sh --binary ./okit-smoke --version v2.0.0
 ```
 
 Windows PowerShell：
 
 ```powershell
 go build -ldflags "-X main.version=v2.0.0" -o ./okit-smoke.exe ./cmd/okit
-scripts/smoke-release.ps1 -Mode binary -Binary ./okit-smoke.exe -Version v2.0.0
+scripts/smoke-release-lifecycle.ps1 -Mode binary -Binary ./okit-smoke.exe -Version v2.0.0
 ```
 
 对已经发布的版本运行完整下载安装和跨版本升级检查：
 
 ```sh
-sh scripts/smoke-release.sh --release --version v2.0.0
+sh scripts/smoke-release-lifecycle.sh --release --version v2.0.0
 ```
 
 ```powershell
-scripts/smoke-release.ps1 -Mode release -Version v2.0.0
+scripts/smoke-release-lifecycle.ps1 -Mode release -Version v2.0.0
 ```
 
 release 模式需要 GitHub CLI 和网络访问；binary 模式不验证 GitHub Release 上传环节。

@@ -33,7 +33,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  smoke-linux:
+  smoke-release-lifecycle-linux:
     needs: release
     runs-on: ubuntu-latest
     env:
@@ -41,13 +41,13 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install and inspect lifecycle plan
+      - name: Linux release lifecycle smoke test
         env:
           OKIT_HOME: ${{ runner.temp }}/okit-home
           OKIT_INSTALL_DIR: ${{ runner.temp }}/okit-bin
-        run: sh scripts/smoke-release.sh --release --version "$OKIT_VERSION" --repository "${{ github.repository }}"
+        run: sh scripts/smoke-release-lifecycle.sh --release --version "$OKIT_VERSION" --repository "${{ github.repository }}"
 
-  smoke-windows:
+  smoke-release-lifecycle-windows:
     needs: release
     runs-on: windows-latest
     env:
@@ -55,9 +55,9 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install and inspect lifecycle plan
+      - name: Windows release lifecycle smoke test
         shell: pwsh
         env:
           OKIT_HOME: ${{ runner.temp }}\okit-home
           OKIT_INSTALL_DIR: ${{ runner.temp }}\okit-bin
-        run: scripts/smoke-release.ps1 -Mode release -Version $env:OKIT_VERSION -Repository "${{ github.repository }}"
+        run: scripts/smoke-release-lifecycle.ps1 -Mode release -Version $env:OKIT_VERSION -Repository "${{ github.repository }}"

@@ -53,16 +53,29 @@ func TestGoReleaserBuildsDocumentedMatrixAndPublishesInstallers(t *testing.T) {
 	}
 }
 
-func TestReleaseWorkflowRunsInstallUpdateAndUninstallSmokeTests(t *testing.T) {
-	content := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"smoke-linux", "smoke-windows", "smoke-release.sh", "smoke-release.ps1", "--release", "internal/releasemanifest/cmd/generate"} {
-		if !strings.Contains(content, required) {
+func TestWorkflowsSeparateRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
+	releaseWorkflow := repositoryFile(t, ".github", "workflows", "release.yml")
+	for _, required := range []string{"smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate"} {
+		if !strings.Contains(releaseWorkflow, required) {
 			t.Errorf("release workflow does not contain %q", required)
 		}
 	}
-	for _, file := range []string{"smoke-release.sh", "smoke-release.ps1"} {
+	for _, file := range []string{"smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1"} {
 		smoke := repositoryFile(t, "scripts", file)
-		for _, required := range []string{"binary", "release", "self update", "self uninstall", "info --format json", "--dry-run", "actual output"} {
+		for _, required := range []string{"binary", "release", "self update", "self uninstall", "smoke-runtime-", "--dry-run", "actual output"} {
+			if !strings.Contains(smoke, required) {
+				t.Errorf("%s does not contain %q", file, required)
+			}
+		}
+	}
+
+	ciWorkflow := repositoryFile(t, ".github", "workflows", "ci.yml")
+	for _, file := range []string{"smoke-runtime-linux.sh", "smoke-runtime-windows.ps1", "smoke-runtime-windows-git-bash.sh"} {
+		if !strings.Contains(ciWorkflow, file) {
+			t.Errorf("CI workflow does not call %s", file)
+		}
+		smoke := repositoryFile(t, "scripts", file)
+		for _, required := range []string{"--version", "--help", "info --format json", "path_status"} {
 			if !strings.Contains(smoke, required) {
 				t.Errorf("%s does not contain %q", file, required)
 			}

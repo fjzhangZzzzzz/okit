@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
@@ -23,29 +25,26 @@ func TestCollectReportsShadowedExecutable_INFO001_INFO002_INFO005(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	collector := Collector{
-		Build:      Build{Version: "v2.0.0", Commit: "abc123", Built: "2026-07-18"},
-		GOOS:       "windows",
-		GOARCH:     "amd64",
-		Executable: func() (string, error) { return executable, nil },
-		LookPath:   func(string) (string, error) { return resolved, nil },
-		Home:       func() (string, error) { return home, nil },
-		Getenv: func(key string) string {
+	collector := testCollector(Build{Version: "v2.0.0", Commit: "abc123", Built: "2026-07-18"}, func(system *collectorSystem) {
+		system.Executable = func() (string, error) { return executable, nil }
+		system.LookPath = func(string) (string, error) { return resolved, nil }
+		system.Home = func() (string, error) { return home, nil }
+		system.Getenv = func(key string) string {
 			if key == "PATH" {
 				return filepath.Dir(resolved) + string(os.PathListSeparator) + filepath.Dir(executable)
 			}
 			return ""
-		},
-		Stat: os.Stat,
-		LoadMetadata: func(string) (selfmanage.Metadata, error) {
+		}
+		system.Stat = os.Stat
+		system.LoadMetadata = func(string) (selfmanage.Metadata, error) {
 			return selfmanage.Metadata{Method: "official", Channel: "stable", Version: "v2.0.0", Executable: executable}, nil
-		},
-	}
+		}
+	})
 	info, err := collector.Collect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Version != "v2.0.0" || info.Platform != "windows/amd64" || info.Executable != executable || info.DataDir != home {
+	if info.Version != "v2.0.0" || info.Platform != runtime.GOOS+"/"+runtime.GOARCH || info.Executable != executable || info.DataDir != home {
 		t.Fatalf("info=%+v", info)
 	}
 	if info.PathStatus != "shadowed" || !info.InstallDirInPath || !hasWarning(info, "PATH_SHADOWED") {
@@ -61,19 +60,17 @@ func TestCollectReportsShadowedExecutable_INFO001_INFO002_INFO005(t *testing.T) 
 
 func TestCollectReportsMissingPathAndMetadata_INFO003_INFO004(t *testing.T) {
 	home := t.TempDir()
-	collector := Collector{
-		Build:      Build{Version: "dev"},
-		GOOS:       "linux",
-		GOARCH:     "arm64",
-		Executable: func() (string, error) { return "/opt/okit", nil },
-		LookPath:   func(string) (string, error) { return "", errors.New("not found") },
-		Home:       func() (string, error) { return home, nil },
-		Getenv:     func(string) string { return "" },
-		Stat:       os.Stat,
-		LoadMetadata: func(string) (selfmanage.Metadata, error) {
+	executable := filepath.Join(home, "bin", "okit")
+	collector := testCollector(Build{Version: "dev"}, func(system *collectorSystem) {
+		system.Executable = func() (string, error) { return executable, nil }
+		system.LookPath = func(string) (string, error) { return "", errors.New("not found") }
+		system.Home = func() (string, error) { return home, nil }
+		system.Getenv = func(string) string { return "" }
+		system.Stat = os.Stat
+		system.LoadMetadata = func(string) (selfmanage.Metadata, error) {
 			return selfmanage.Metadata{}, os.ErrNotExist
-		},
-	}
+		}
+	})
 	info, err := collector.Collect()
 	if err != nil {
 		t.Fatal(err)
@@ -90,17 +87,16 @@ func TestCollectReportsMissingPathAndMetadata_INFO003_INFO004(t *testing.T) {
 }
 
 func TestCollectReportsInvalidMetadata_INFO004(t *testing.T) {
-	collector := Collector{
-		Build:        Build{Version: "dev"},
-		GOOS:         "linux",
-		GOARCH:       "amd64",
-		Executable:   func() (string, error) { return "/usr/local/bin/okit", nil },
-		LookPath:     func(string) (string, error) { return "/usr/local/bin/okit", nil },
-		Home:         func() (string, error) { return "/home/user/.okit", nil },
-		Getenv:       func(string) string { return "/usr/local/bin" },
-		Stat:         func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
-		LoadMetadata: func(string) (selfmanage.Metadata, error) { return selfmanage.Metadata{}, errors.New("invalid json") },
-	}
+	home := t.TempDir()
+	executable := filepath.Join(home, "bin", "okit")
+	collector := testCollector(Build{Version: "dev"}, func(system *collectorSystem) {
+		system.Executable = func() (string, error) { return executable, nil }
+		system.LookPath = func(string) (string, error) { return executable, nil }
+		system.Home = func() (string, error) { return home, nil }
+		system.Getenv = func(string) string { return filepath.Dir(executable) }
+		system.Stat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+		system.LoadMetadata = func(string) (selfmanage.Metadata, error) { return selfmanage.Metadata{}, errors.New("invalid json") }
+	})
 	info, err := collector.Collect()
 	if err != nil {
 		t.Fatal(err)
@@ -110,53 +106,50 @@ func TestCollectReportsInvalidMetadata_INFO004(t *testing.T) {
 	}
 }
 
-func TestCollectFallsBackToExecutableSuffixOnWindows_INFO002(t *testing.T) {
-	legacy := `C:\Users\user\.local\bin\okit.exe`
-	calls := make([]string, 0, 2)
-	collector := Collector{
-		Build:      Build{Version: "v2.0.0"},
-		GOOS:       "windows",
-		GOARCH:     "amd64",
-		Executable: func() (string, error) { return `C:\Programs\okit\bin\okit.exe`, nil },
-		LookPath: func(name string) (string, error) {
-			calls = append(calls, name)
-			if name == "okit.exe" {
-				return legacy, nil
-			}
-			return "", errors.New("not found")
-		},
-		Home:   func() (string, error) { return `C:\Users\user\.okit`, nil },
-		Getenv: func(string) string { return "" },
-		Stat:   func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
-		LoadMetadata: func(string) (selfmanage.Metadata, error) {
-			return selfmanage.Metadata{}, os.ErrNotExist
-		},
+func TestDiagnoseDoesNotInterpretForeignPathSyntax(t *testing.T) {
+	executable := `C:\Programs\okit\okit.exe`
+	state := snapshot{
+		Build:         Build{Version: "v2.0.0"},
+		Platform:      "windows/amd64",
+		Executable:    executable,
+		InstallDir:    `C:\Programs\okit`,
+		Resolved:      `c:\programs\OKIT\okit.exe`,
+		PathEntries:   []string{`c:\programs\OKIT`},
+		DataDir:       `C:\Users\test\.okit`,
+		ConfigFile:    `C:\Users\test\.okit\config.yaml`,
+		MetadataFile:  `C:\Users\test\.okit\install.json`,
+		MetadataError: os.ErrNotExist,
 	}
-	info, err := collector.Collect()
-	if err != nil {
-		t.Fatal(err)
+	info := diagnose(state, strings.EqualFold)
+	if info.PathStatus != "ok" || !info.InstallDirInPath {
+		t.Fatalf("diagnosis=%+v", info)
 	}
-	if len(calls) != 2 || calls[0] != "okit" || calls[1] != "okit.exe" {
-		t.Fatalf("look path calls=%v", calls)
-	}
-	if info.Resolved != legacy || info.PathStatus != "shadowed" || !hasWarning(info, "PATH_SHADOWED") {
-		t.Fatalf("path diagnosis=%+v", info)
+	if info.Executable != executable {
+		t.Fatalf("diagnose changed executable path to %q", info.Executable)
 	}
 }
 
 func TestCollectFailsWhenCorePathsCannotBeResolved(t *testing.T) {
-	collector := Collector{Executable: func() (string, error) { return "", errors.New("injected executable failure") }}
+	collector := testCollector(Build{}, func(system *collectorSystem) {
+		system.Executable = func() (string, error) { return "", errors.New("injected executable failure") }
+	})
 	if _, err := collector.Collect(); err == nil || err.Error() != "resolve executable: injected executable failure" {
 		t.Fatalf("error=%v", err)
 	}
 
-	collector = Collector{
-		Executable: func() (string, error) { return "/usr/bin/okit", nil },
-		Home:       func() (string, error) { return "", errors.New("injected home failure") },
-	}
+	collector = testCollector(Build{}, func(system *collectorSystem) {
+		system.Executable = func() (string, error) { return filepath.Join(t.TempDir(), "okit"), nil }
+		system.Home = func() (string, error) { return "", errors.New("injected home failure") }
+	})
 	if _, err := collector.Collect(); err == nil || err.Error() != "injected home failure" {
 		t.Fatalf("error=%v", err)
 	}
+}
+
+func testCollector(build Build, configure func(*collectorSystem)) Collector {
+	system := nativeSystem()
+	configure(&system)
+	return Collector{Build: build, system: system}
 }
 
 func hasWarning(info Info, code string) bool {

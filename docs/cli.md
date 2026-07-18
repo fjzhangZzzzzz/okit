@@ -146,7 +146,8 @@ okit self uninstall [--purge] [--yes] [--dry-run]
 
 ## 配置与环境
 
-- `OKIT_HOME`：覆盖数据根目录，默认 `~/.okit`。
+- `OKIT_HOME`：覆盖数据根目录，默认 `~/.okit`。Windows Git Bash 可使用
+  `C:/Users/name/.okit` 或 `/c/Users/name/.okit`；无法映射到盘符的 POSIX 路径会被拒绝。
 - `NO_COLOR`：存在且非空时禁用颜色。
 - 配置键使用点分层级，例如 `git-sync.host`。
 - 密码、私钥内容和访问令牌不得写入普通配置文件或日志。
