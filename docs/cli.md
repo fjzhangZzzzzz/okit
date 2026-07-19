@@ -17,6 +17,21 @@
   dry-run 模式产生持久化变更。
 - `--force` 只跳过交互确认，不跳过参数、安全或权限校验。
 
+## 帮助契约
+
+- 根命令和命令树中的每一级命令均支持 `-h`、`--help`；帮助写入 stdout、返回 `0`，
+  且不得执行对应业务操作。
+- `okit help <command...>` 等价于目标命令的 `--help`，例如
+  `okit help mobaxterm theme apply`。
+- 上下文帮助至少包含完整调用路径、位置参数、当前命令参数和继承的全局参数。
+- 未知命令、未知参数及参数数量错误写入 stderr 并返回 `2`，默认不附带整段 usage。
+
+验收条件：
+
+- `CLI-001`：所有已记录的命令层级均能输出自身上下文帮助，且不执行功能逻辑。
+- `CLI-002`：`help` 命令能够定位任意已记录的嵌套命令。
+- `CLI-003`：未知参数、缺少参数和多余参数统一作为使用错误返回 `2`。
+
 全局参数：
 
 ```text
@@ -48,17 +63,17 @@ okit
 │   ├── status <shell>
 │   └── config <get|set|list>
 ├── mobaxterm
-    ├── status
-    ├── theme
-    │   ├── list
-    │   ├── apply <name>
-    │   ├── restore
-    │   └── cache <update|clean|status>
-    └── license
-        ├── generate
-        ├── deploy
-        ├── inspect
-        └── verify
+│   ├── status
+│   ├── theme
+│   │   ├── list
+│   │   ├── apply <name>
+│   │   ├── restore
+│   │   └── cache <update|clean|status>
+│   └── license
+│       ├── generate
+│       ├── deploy
+│       ├── inspect
+│       └── verify
 └── self
     ├── update
     └── uninstall

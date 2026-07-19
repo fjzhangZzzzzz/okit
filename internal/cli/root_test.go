@@ -27,6 +27,94 @@ func TestRootHelpListsDocumentedCommands(t *testing.T) {
 	}
 }
 
+func TestEveryDocumentedCommandHasContextualHelp_CLI001(t *testing.T) {
+	commands := [][]string{
+		{"info"},
+		{"hex"},
+		{"pe"}, {"pe", "inspect"},
+		{"git-sync"}, {"git-sync", "run"}, {"git-sync", "status"}, {"git-sync", "config"},
+		{"git-sync", "config", "get"}, {"git-sync", "config", "set"}, {"git-sync", "config", "list"},
+		{"shell"}, {"shell", "sync"}, {"shell", "source"}, {"shell", "enable"},
+		{"shell", "disable"}, {"shell", "status"}, {"shell", "config"},
+		{"shell", "config", "get"}, {"shell", "config", "set"}, {"shell", "config", "list"},
+		{"mobaxterm"}, {"mobaxterm", "status"}, {"mobaxterm", "theme"},
+		{"mobaxterm", "theme", "list"}, {"mobaxterm", "theme", "apply"}, {"mobaxterm", "theme", "restore"},
+		{"mobaxterm", "theme", "cache"}, {"mobaxterm", "theme", "cache", "update"},
+		{"mobaxterm", "theme", "cache", "clean"}, {"mobaxterm", "theme", "cache", "status"},
+		{"mobaxterm", "license"}, {"mobaxterm", "license", "generate"}, {"mobaxterm", "license", "deploy"},
+		{"mobaxterm", "license", "inspect"}, {"mobaxterm", "license", "verify"},
+		{"self"}, {"self", "update"}, {"self", "uninstall"},
+	}
+	for _, command := range commands {
+		command := command
+		t.Run(strings.Join(command, "_"), func(t *testing.T) {
+			args := append(append([]string{}, command...), "--help")
+			var stdout, stderr bytes.Buffer
+			code := New("dev").Run(args, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("args=%v code=%d stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "Usage:") || !strings.Contains(stdout.String(), strings.Join(command, " ")) {
+				t.Fatalf("args=%v help is not contextual: %q", args, stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("args=%v stderr=%q", args, stderr.String())
+			}
+		})
+	}
+}
+
+func TestHelpSubcommandTargetsNestedCommand_CLI002(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := New("dev").Run([]string{"help", "self", "update"}, &stdout, &stderr)
+	if code != 0 || !strings.Contains(stdout.String(), "okit self update") || stderr.Len() != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestCobraRejectsInvalidArgumentsAsUsageErrors_CLI003(t *testing.T) {
+	for _, args := range [][]string{
+		{"hex", "--unknown"},
+		{"hex", "LICENSE", "--skip", "-1"},
+		{"self", "update", "unexpected"},
+		{"shell", "status"},
+		{"git-sync", "run", ".", "--host", "example", "--target-root", "/tmp", "--port", "0"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := New("dev").Run(args, &stdout, &stderr)
+		if code != 2 || stderr.Len() == 0 {
+			t.Errorf("args=%v code=%d stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
+		}
+	}
+}
+
+func TestHelpDoesNotInitializeFeatureState_CLI001(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "not-created")
+	t.Setenv("OKIT_HOME", home)
+	for _, args := range [][]string{
+		{"git-sync", "config", "get", "--help"},
+		{"shell", "sync", "--help"},
+		{"mobaxterm", "status", "--help"},
+		{"self", "update", "--help"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := New("dev").Run(args, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+			t.Fatalf("args=%v code=%d stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
+		}
+	}
+	if _, err := os.Stat(home); !os.IsNotExist(err) {
+		t.Fatalf("help initialized feature state at %s: %v", home, err)
+	}
+}
+
+func TestRootHelpDoesNotExposeUndocumentedCompletionCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := New("dev").Run([]string{"--help"}, &stdout, &stderr)
+	if code != 0 || strings.Contains(stdout.String(), "completion") || stderr.Len() != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestInfoTextAndJSON_INFO006(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OKIT_HOME", home)

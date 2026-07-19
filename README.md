@@ -36,6 +36,7 @@ okit self update [--check]
 okit self uninstall [--purge]
 ```
 
+每一级命令均支持 `--help`，也可使用 `okit help <command...>` 查看嵌套命令说明。
 完整命令和行为约定参见 [CLI 规范](docs/cli.md)。
 
 ## 安装与状态
