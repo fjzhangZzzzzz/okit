@@ -58,23 +58,26 @@ type collectorSystem struct {
 	Getenv       func(string) string
 	Stat         func(string) (os.FileInfo, error)
 	LoadMetadata func(string) (selfmanage.Metadata, error)
+	Canonicalize func(string) (string, error)
+	SameFile     func(string, string) bool
 }
 
 type snapshot struct {
-	Build         Build
-	Platform      string
-	Executable    string
-	InstallDir    string
-	Resolved      string
-	PathLookupErr error
-	PathEntries   []string
-	DataDir       string
-	ConfigFile    string
-	ConfigExists  bool
-	ConfigError   error
-	MetadataFile  string
-	Metadata      selfmanage.Metadata
-	MetadataError error
+	Build              Build
+	Platform           string
+	Executable         string
+	InstallDir         string
+	Resolved           string
+	PathLookupErr      error
+	PathEntries        []string
+	DataDir            string
+	ConfigFile         string
+	ConfigExists       bool
+	ConfigError        error
+	MetadataFile       string
+	Metadata           selfmanage.Metadata
+	MetadataExecutable string
+	MetadataError      error
 }
 
 func NewCollector(build Build) Collector {
@@ -91,7 +94,7 @@ func (c Collector) Collect() (Info, error) {
 	if err != nil {
 		return Info{}, fmt.Errorf("resolve executable: %w", err)
 	}
-	executable, err = absolutePath(executable)
+	executable, err = system.Canonicalize(executable)
 	if err != nil {
 		return Info{}, fmt.Errorf("resolve executable: %w", err)
 	}
@@ -99,17 +102,26 @@ func (c Collector) Collect() (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	home, err = absolutePath(home)
+	home, err = system.Canonicalize(home)
 	if err != nil {
 		return Info{}, fmt.Errorf("resolve data directory: %w", err)
 	}
 
+	pathEntries := filepath.SplitList(system.Getenv("PATH"))
+	for index, entry := range pathEntries {
+		pathEntries[index] = canonicalComparablePath(
+			system.Canonicalize,
+			system.SameFile,
+			filepath.Dir(executable),
+			entry,
+		)
+	}
 	state := snapshot{
 		Build:        c.Build,
 		Platform:     runtime.GOOS + "/" + runtime.GOARCH,
 		Executable:   executable,
 		InstallDir:   filepath.Dir(executable),
-		PathEntries:  filepath.SplitList(system.Getenv("PATH")),
+		PathEntries:  pathEntries,
 		DataDir:      home,
 		ConfigFile:   filepath.Join(home, "config.yaml"),
 		MetadataFile: filepath.Join(home, "install.json"),
@@ -122,9 +134,7 @@ func (c Collector) Collect() (Info, error) {
 		}
 	}
 	if state.Resolved != "" {
-		if absolute, err := absolutePath(state.Resolved); err == nil {
-			state.Resolved = absolute
-		}
+		state.Resolved = canonicalComparablePath(system.Canonicalize, system.SameFile, executable, state.Resolved)
 	}
 	if _, err := system.Stat(state.ConfigFile); err == nil {
 		state.ConfigExists = true
@@ -132,6 +142,14 @@ func (c Collector) Collect() (Info, error) {
 		state.ConfigError = err
 	}
 	state.Metadata, state.MetadataError = system.LoadMetadata(home)
+	if state.MetadataError == nil {
+		state.MetadataExecutable = canonicalComparablePath(
+			system.Canonicalize,
+			system.SameFile,
+			executable,
+			state.Metadata.Executable,
+		)
+	}
 	return diagnose(state, sameNativePath), nil
 }
 
@@ -192,7 +210,7 @@ func diagnose(state snapshot, equalPath func(string, string) bool) Info {
 	info.InstallMethod = state.Metadata.Method
 	info.InstallChannel = state.Metadata.Channel
 	info.InstallVersion = state.Metadata.Version
-	if state.Metadata.Executable != "" && !equalPath(state.Executable, state.Metadata.Executable) {
+	if state.Metadata.Executable != "" && !equalPath(state.Executable, state.MetadataExecutable) {
 		info.addWarning("METADATA_EXECUTABLE_MISMATCH", fmt.Sprintf("install metadata points to %s", state.Metadata.Executable))
 	}
 	if state.Metadata.Version != "" && state.Build.Version != "" && state.Metadata.Version != state.Build.Version {
@@ -209,6 +227,8 @@ func nativeSystem() collectorSystem {
 		Getenv:       os.Getenv,
 		Stat:         os.Stat,
 		LoadMetadata: selfmanage.LoadMetadata,
+		Canonicalize: absolutePath,
+		SameFile:     sameExistingFile,
 	}
 }
 
@@ -259,6 +279,37 @@ func absolutePath(path string) (string, error) {
 		return evaluated, nil
 	}
 	return absolute, nil
+}
+
+func canonicalPathBestEffort(canonicalize func(string) (string, error), path string) string {
+	if path == "" {
+		return ""
+	}
+	canonical, err := canonicalize(path)
+	if err != nil {
+		return path
+	}
+	return canonical
+}
+
+func canonicalComparablePath(canonicalize func(string) (string, error), sameFile func(string, string) bool, reference, path string) string {
+	canonical := canonicalPathBestEffort(canonicalize, path)
+	if reference != "" && canonical != "" && sameFile(reference, canonical) {
+		return reference
+	}
+	return canonical
+}
+
+func sameExistingFile(left, right string) bool {
+	leftInfo, err := os.Stat(left)
+	if err != nil {
+		return false
+	}
+	rightInfo, err := os.Stat(right)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(leftInfo, rightInfo)
 }
 
 func valueOrDash(value string) string {
