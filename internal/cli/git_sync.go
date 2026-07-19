@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -10,21 +9,23 @@ import (
 
 	"github.com/fjzhangZzzzzz/okit/internal/config"
 	"github.com/fjzhangZzzzzz/okit/internal/gitsync"
+	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/spf13/cobra"
 )
 
-func (a *App) newGitSyncCommand() *cobra.Command {
+func (a *App) newGitSyncCommand(global *globalOptions) *cobra.Command {
 	command := commandGroup("git-sync", "Synchronize Git changes")
-	command.AddCommand(a.newGitSyncRunCommand(), newGitSyncStatusCommand(), newConfigCommand("git-sync"))
+	command.AddCommand(a.newGitSyncRunCommand(global), newGitSyncStatusCommand(global), newConfigCommand("git-sync", global))
 	return command
 }
 
-func (a *App) newGitSyncRunCommand() *cobra.Command {
+func (a *App) newGitSyncRunCommand(global *globalOptions) *cobra.Command {
 	options := gitsync.Options{}
 	command := &cobra.Command{
-		Use:   "run <path...>",
-		Short: "Synchronize one or more repositories",
-		Args:  cobra.MinimumNArgs(1),
+		Use:         "run <path...>",
+		Short:       "Synchronize one or more repositories",
+		Args:        cobra.MinimumNArgs(1),
+		Annotations: map[string]string{"formats": "table,json,jsonl"},
 		RunE: func(cmd *cobra.Command, paths []string) error {
 			if cmd.Flags().Changed("port") && options.Port == 0 {
 				return usageError("--port must be between 1 and 65535")
@@ -72,15 +73,39 @@ func (a *App) newGitSyncRunCommand() *cobra.Command {
 			}
 			results := a.gitSync.Run(context.Background(), paths, options)
 			succeeded, failed := 0, 0
+			presenter := newPresenter(cmd, global)
+			table := &clioutput.Table{Headers: []string{"REPOSITORY", "STATUS", "REMOTE", "OPERATIONS"}}
+			machine := make([]any, 0, len(results))
 			for _, result := range results {
 				if result.Err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", result.Plan.Root, result.Err)
+					presenter.Error(clioutput.Diagnostic{
+						Code: "GITSYNC_REPOSITORY_FAILED", Message: result.Plan.Root + ": " + result.Err.Error(),
+						Hint: "Re-run with --verbose after checking the repository and remote configuration.",
+					})
+					table.Rows = append(table.Rows, []string{gitRepositoryName(result.Plan), "failed", result.Plan.RemoteRoot, "-"})
+					machine = append(machine, map[string]any{"status": "error", "plan": result.Plan, "error": result.Err.Error()})
 					failed++
 					continue
 				}
-				encoded, _ := json.Marshal(result.Plan)
-				fmt.Fprintln(cmd.OutOrStdout(), string(encoded))
+				status := "synchronized"
+				if options.DryRun {
+					status = "planned"
+				} else if len(result.Plan.Operations) == 0 {
+					status = "unchanged"
+				}
+				table.Rows = append(table.Rows, []string{gitRepositoryName(result.Plan), status, result.Plan.RemoteRoot, strconv.Itoa(len(result.Plan.Operations))})
+				machine = append(machine, map[string]any{"status": status, "plan": result.Plan, "transport": result.Transport})
 				succeeded++
+			}
+			summary := fmt.Sprintf("%d succeeded, %d failed.", succeeded, failed)
+			if options.DryRun {
+				summary += " No changes were made."
+			}
+			if err := presenter.Render(clioutput.View{
+				Human:   clioutput.Document{Title: gitSyncTitle(options.DryRun), Table: table, Summary: summary},
+				Machine: machine,
+			}); err != nil {
+				return runError(err)
 			}
 			if failed > 0 && succeeded > 0 {
 				return exitCode(3)
@@ -100,11 +125,12 @@ func (a *App) newGitSyncRunCommand() *cobra.Command {
 	return command
 }
 
-func newGitSyncStatusCommand() *cobra.Command {
+func newGitSyncStatusCommand(global *globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Display Git synchronization configuration",
-		Args:  cobra.NoArgs,
+		Use:         "status",
+		Short:       "Display Git synchronization configuration",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, err := config.DefaultStore()
 			if err != nil {
@@ -121,10 +147,42 @@ func newGitSyncStatusCommand() *cobra.Command {
 				}
 			}
 			sort.Strings(keys)
-			for _, key := range keys {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", key, values[key])
+			document := clioutput.Document{Title: "Git synchronization configuration"}
+			if len(keys) == 0 {
+				document.Title = ""
+				document.Empty = &clioutput.EmptyState{
+					Message: "No git-sync configuration found.",
+					Hint:    "Configure it with `okit git-sync config set <key> <value>`.",
+				}
+			} else {
+				table := &clioutput.Table{Headers: []string{"KEY", "VALUE"}}
+				for _, key := range keys {
+					table.Rows = append(table.Rows, []string{key, values[key]})
+				}
+				document.Table = table
 			}
-			return nil
+			machine := make(map[string]string, len(keys))
+			for _, key := range keys {
+				machine[key] = values[key]
+			}
+			return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: machine})
 		},
 	}
+}
+
+func gitRepositoryName(plan gitsync.Plan) string {
+	if plan.Repository != "" {
+		return plan.Repository
+	}
+	if plan.Root != "" {
+		return plan.Root
+	}
+	return "unknown"
+}
+
+func gitSyncTitle(dryRun bool) string {
+	if dryRun {
+		return "Git synchronization plan"
+	}
+	return "Git synchronization result"
 }

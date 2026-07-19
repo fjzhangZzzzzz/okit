@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/fjzhangZzzzzz/okit/internal/appinfo"
+	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -17,14 +18,45 @@ func (a *App) newInfoCommand(options *globalOptions) *cobra.Command {
 			if err != nil {
 				return runError(err)
 			}
-			if options.format == "json" {
-				if err := appinfo.WriteJSON(cmd.OutOrStdout(), info); err != nil {
-					return runError(err)
-				}
-				return nil
+			presenter := newPresenter(cmd, options)
+			view := clioutput.View{Human: clioutput.Document{
+				Title: "okit information",
+				Fields: []clioutput.Field{
+					{Label: "version", Value: info.Version},
+					{Label: "commit", Value: info.Commit},
+					{Label: "built", Value: info.Built},
+					{Label: "platform", Value: info.Platform},
+					{Label: "executable", Value: info.Executable},
+					{Label: "install-dir", Value: info.InstallDir},
+					{Label: "resolved", Value: info.Resolved},
+					{Label: "path-status", Value: info.PathStatus},
+					{Label: "install-dir-in-path", Value: boolText(info.InstallDirInPath)},
+					{Label: "data-dir", Value: info.DataDir},
+					{Label: "config-file", Value: info.ConfigFile},
+					{Label: "config-exists", Value: boolText(info.ConfigExists)},
+					{Label: "metadata-file", Value: info.MetadataFile},
+					{Label: "metadata-status", Value: info.MetadataStatus},
+					{Label: "install-method", Value: info.InstallMethod},
+					{Label: "install-channel", Value: info.InstallChannel},
+					{Label: "install-version", Value: info.InstallVersion},
+				},
+			}, Machine: info}
+			if err := presenter.Render(view); err != nil {
+				return runError(err)
 			}
-			appinfo.WriteText(cmd.OutOrStdout(), cmd.ErrOrStderr(), info)
+			if options.format == clioutput.FormatTable {
+				for _, warning := range info.Warnings {
+					presenter.Warning(clioutput.Diagnostic{Code: warning.Code, Message: warning.Message})
+				}
+			}
 			return nil
 		},
 	}
+}
+
+func boolText(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }

@@ -14,6 +14,11 @@ type semanticVersion struct {
 	prerelease          string
 }
 
+func ValidateVersion(value string) error {
+	_, err := parseVersion(value)
+	return err
+}
+
 func parseVersion(value string) (semanticVersion, error) {
 	value = strings.TrimPrefix(strings.TrimSpace(value), "v")
 	parts := strings.SplitN(value, "-", 2)

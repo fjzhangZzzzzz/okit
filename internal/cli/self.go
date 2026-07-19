@@ -3,29 +3,33 @@ package cli
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/fjzhangZzzzzz/okit/internal/config"
+	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
 	"github.com/spf13/cobra"
 )
 
-func (a *App) newSelfCommand() *cobra.Command {
+func (a *App) newSelfCommand(global *globalOptions) *cobra.Command {
 	command := commandGroup("self", "Update or uninstall okit")
-	command.AddCommand(a.newSelfUpdateCommand(), a.newSelfUninstallCommand())
+	command.AddCommand(a.newSelfUpdateCommand(global), a.newSelfUninstallCommand(global))
 	return command
 }
 
-func (a *App) newSelfUpdateCommand() *cobra.Command {
+func (a *App) newSelfUpdateCommand(global *globalOptions) *cobra.Command {
 	options := selfmanage.UpdateOptions{}
 	command := &cobra.Command{
-		Use:   "update",
-		Short: "Check for or install an okit update",
-		Args:  cobra.NoArgs,
+		Use:         "update",
+		Short:       "Check for or install an okit update",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := selfmanage.ValidateVersion(a.version); err != nil {
+				return domainError("SELF_VERSION_INVALID", "cannot check for updates from version "+quoteVersion(a.version), "Install an official release or build with semantic version metadata.")
+			}
 			updater := a.selfUpdater
 			if updater == nil {
 				home, executable, err := selfPaths()
@@ -36,11 +40,49 @@ func (a *App) newSelfUpdateCommand() *cobra.Command {
 			}
 			result, err := updater.Update(context.Background(), options)
 			if err != nil {
+				if strings.Contains(err.Error(), "invalid semantic version") {
+					return domainError("SELF_VERSION_INVALID", "cannot check for updates from version "+quoteVersion(a.version), "Install an official release or build with semantic version metadata.")
+				}
+				if strings.Contains(err.Error(), "403") {
+					return domainError("SELF_RELEASE_ACCESS_DENIED", "the release service denied the update request", "Retry later or configure GH_TOKEN/GITHUB_TOKEN if the service rate limit was reached.")
+				}
 				return runError(err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "current=%s available=%s updated=%t scheduled=%t\n", result.Current, result.Available, result.Updated, result.Scheduled)
-			if options.DryRun && result.Plan != "" {
-				fmt.Fprintln(cmd.OutOrStdout(), result.Plan)
+			available := result.Available != "" && result.Available != result.Current
+			title := "okit is up to date."
+			hint := ""
+			if options.Check && available {
+				title = "Update available"
+				hint = "Run `okit self update` to install."
+			} else if options.DryRun {
+				title = "Update plan"
+			} else if result.Scheduled {
+				title = "Update scheduled"
+			} else if result.Updated {
+				title = "okit updated successfully."
+			} else if available {
+				title = "Update selected"
+			}
+			document := clioutput.Document{
+				Title:  title,
+				Fields: []clioutput.Field{{Label: "Current", Value: result.Current}, {Label: "Available", Value: result.Available}},
+				Hint:   hint,
+			}
+			if options.DryRun {
+				if result.Plan != "" {
+					document.Lines = []string{result.Plan}
+				}
+				document.Summary = "No changes were made."
+			}
+			machine := map[string]any{
+				"current_version": result.Current, "available_version": result.Available,
+				"update_available": available, "updated": result.Updated, "scheduled": result.Scheduled,
+			}
+			if result.Plan != "" {
+				machine["plan"] = result.Plan
+			}
+			if err := newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: machine}); err != nil {
+				return runError(err)
 			}
 			return nil
 		},
@@ -52,20 +94,26 @@ func (a *App) newSelfUpdateCommand() *cobra.Command {
 	return command
 }
 
-func (a *App) newSelfUninstallCommand() *cobra.Command {
+func (a *App) newSelfUninstallCommand(global *globalOptions) *cobra.Command {
 	options := selfmanage.UninstallOptions{}
 	command := &cobra.Command{
-		Use:   "uninstall",
-		Short: "Uninstall okit",
-		Args:  cobra.NoArgs,
+		Use:         "uninstall",
+		Short:       "Uninstall okit",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			presenter := newPresenter(cmd, global)
 			if options.Purge && !options.Yes && !options.DryRun {
-				fmt.Fprint(cmd.ErrOrStderr(), "Permanently delete OKIT_HOME and all user data? [y/N] ")
+				if err := presenter.Prompt("Permanently delete OKIT_HOME and all user data? [y/N] "); err != nil {
+					return runError(err)
+				}
 				answer, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 				answer = strings.TrimSpace(strings.ToLower(answer))
 				if answer != "y" && answer != "yes" {
-					fmt.Fprintln(cmd.OutOrStdout(), "uninstall cancelled")
-					return nil
+					return presenter.Render(clioutput.View{
+						Human:   clioutput.Document{Title: "Uninstall cancelled", Summary: "No changes were made."},
+						Machine: map[string]any{"status": "cancelled", "changed": false},
+					})
 				}
 				options.Yes = true
 			}
@@ -81,19 +129,62 @@ func (a *App) newSelfUninstallCommand() *cobra.Command {
 			if err != nil {
 				return runError(err)
 			}
+			items := make([]clioutput.PlanItem, 0, len(result.Plan))
 			for _, target := range result.Plan {
-				fmt.Fprintln(cmd.OutOrStdout(), target)
+				items = append(items, clioutput.PlanItem{Action: uninstallAction(options.DryRun, result.Scheduled), Resource: uninstallResource(target), Target: target})
 			}
+			title := "okit uninstalled successfully."
 			if result.Scheduled {
-				fmt.Fprintln(cmd.OutOrStdout(), "uninstall scheduled")
+				title = "Uninstall scheduled"
+			} else if options.DryRun {
+				title = "Uninstall plan"
 			}
-			return nil
+			summary := ""
+			if options.DryRun {
+				summary = "No changes were made."
+			}
+			return presenter.Render(clioutput.View{
+				Human:   clioutput.Document{Title: title, Plan: items, Summary: summary},
+				Machine: map[string]any{"status": uninstallStatus(options.DryRun, result.Scheduled), "targets": result.Plan, "purge": options.Purge},
+			})
 		},
 	}
 	command.Flags().BoolVar(&options.Purge, "purge", false, "also remove OKIT_HOME and user data")
 	command.Flags().BoolVar(&options.Yes, "yes", false, "confirm destructive removal")
 	command.Flags().BoolVar(&options.DryRun, "dry-run", false, "show the uninstall plan without changing files")
 	return command
+}
+
+func quoteVersion(version string) string { return `"` + version + `"` }
+
+func uninstallAction(dryRun, scheduled bool) string {
+	if dryRun {
+		return "Would remove"
+	}
+	if scheduled {
+		return "Schedule removal"
+	}
+	return "Removed"
+}
+
+func uninstallResource(target string) string {
+	if filepath.Base(target) == "install.json" {
+		return "metadata"
+	}
+	if strings.HasSuffix(strings.ToLower(target), ".exe") || filepath.Base(target) == "okit" {
+		return "executable"
+	}
+	return "managed resource"
+}
+
+func uninstallStatus(dryRun, scheduled bool) string {
+	if dryRun {
+		return "planned"
+	}
+	if scheduled {
+		return "scheduled"
+	}
+	return "removed"
 }
 
 func selfPaths() (string, string, error) {

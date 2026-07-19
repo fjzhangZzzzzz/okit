@@ -1,9 +1,10 @@
 package cli
 
 import (
-	"fmt"
+	"bytes"
 	"os"
 
+	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/fjzhangZzzzzz/okit/internal/peinspect"
 	"github.com/spf13/cobra"
 )
@@ -18,10 +19,11 @@ func newPECommand(options *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, files []string) error {
 			infos := make([]peinspect.Info, 0, len(files))
 			failed := 0
+			presenter := newPresenter(cmd, options)
 			for _, path := range files {
 				file, err := os.Open(path)
 				if err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", path, err)
+					presenter.Error(clioutput.Diagnostic{Code: "PE_FILE_OPEN_FAILED", Message: path + ": " + err.Error(), Hint: "Check that the file exists and is readable."})
 					failed++
 					continue
 				}
@@ -31,15 +33,25 @@ func newPECommand(options *globalOptions) *cobra.Command {
 					parseErr = closeErr
 				}
 				if parseErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", path, parseErr)
+					presenter.Error(clioutput.Diagnostic{Code: "PE_PARSE_FAILED", Message: path + ": " + parseErr.Error(), Hint: "Confirm that the input is a valid PE file."})
 					failed++
 					continue
 				}
 				infos = append(infos, info)
 			}
 			if len(infos) > 0 {
-				if err := peinspect.Write(cmd.OutOrStdout(), infos, options.format); err != nil {
-					return runError(err)
+				if options.format == clioutput.FormatJSON {
+					if err := presenter.Render(clioutput.View{Machine: infos}); err != nil {
+						return runError(err)
+					}
+				} else {
+					var rendered bytes.Buffer
+					if err := peinspect.Write(&rendered, infos, options.format); err != nil {
+						return runError(err)
+					}
+					if err := presenter.Raw(rendered.String()); err != nil {
+						return runError(err)
+					}
 				}
 			}
 			if failed > 0 && len(infos) > 0 {
