@@ -1,29 +1,31 @@
 package cli
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/fjzhangZzzzzz/okit/internal/config"
 	"github.com/fjzhangZzzzzz/okit/internal/mobaxterm"
 	"github.com/fjzhangZzzzzz/okit/internal/mobaxterm/license"
 	"github.com/fjzhangZzzzzz/okit/internal/mobaxterm/theme"
+	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/spf13/cobra"
 )
 
-func newMobaXtermCommand() *cobra.Command {
+func newMobaXtermCommand(global *globalOptions) *cobra.Command {
 	command := commandGroup("mobaxterm", "Manage MobaXterm")
-	command.AddCommand(newMobaStatusCommand(), newMobaThemeCommand(), newMobaLicenseCommand())
+	command.AddCommand(newMobaStatusCommand(global), newMobaThemeCommand(global), newMobaLicenseCommand(global))
 	return command
 }
 
 func mobaContext() (mobaxterm.Service, string, error) {
 	if runtime.GOOS != "windows" {
-		return mobaxterm.Service{}, "", usageError("mobaxterm is only supported on Windows")
+		return mobaxterm.Service{}, "", usageError("MobaXterm is only supported on Windows")
 	}
 	home, err := config.Home()
 	if err != nil {
@@ -32,11 +34,12 @@ func mobaContext() (mobaxterm.Service, string, error) {
 	return mobaxterm.Service{GOOS: runtime.GOOS, OKITHome: home}, home, nil
 }
 
-func newMobaStatusCommand() *cobra.Command {
+func newMobaStatusCommand(global *globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Display detected MobaXterm installations",
-		Args:  cobra.NoArgs,
+		Use:         "status",
+		Short:       "Display detected MobaXterm installations",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			service, _, err := mobaContext()
 			if err != nil {
@@ -46,25 +49,35 @@ func newMobaStatusCommand() *cobra.Command {
 			if err != nil {
 				return runError(err)
 			}
-			data, _ := json.MarshalIndent(candidates, "", "  ")
-			fmt.Fprintln(cmd.OutOrStdout(), string(data))
-			return nil
+			document := clioutput.Document{Title: "Detected MobaXterm installations"}
+			if len(candidates) == 0 {
+				document.Title = ""
+				document.Empty = &clioutput.EmptyState{Message: "No MobaXterm installation found."}
+			} else {
+				table := &clioutput.Table{Headers: []string{"DEFAULT", "VERSION", "SOURCE", "EXECUTABLE", "CONFIG"}}
+				for _, candidate := range candidates {
+					table.Rows = append(table.Rows, []string{boolText(candidate.Default), candidate.Version, candidate.Source, candidate.ExePath, candidate.ConfigPath})
+				}
+				document.Table = table
+			}
+			return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: candidates})
 		},
 	}
 }
 
-func newMobaThemeCommand() *cobra.Command {
+func newMobaThemeCommand(global *globalOptions) *cobra.Command {
 	command := commandGroup("theme", "Manage MobaXterm terminal themes")
-	command.AddCommand(newMobaThemeListCommand(), newMobaThemeApplyCommand(), newMobaThemeRestoreCommand(), newMobaThemeCacheCommand())
+	command.AddCommand(newMobaThemeListCommand(global), newMobaThemeApplyCommand(global), newMobaThemeRestoreCommand(global), newMobaThemeCacheCommand(global))
 	return command
 }
 
-func newMobaThemeListCommand() *cobra.Command {
+func newMobaThemeListCommand(global *globalOptions) *cobra.Command {
 	search, limit := "", 20
 	command := &cobra.Command{
-		Use:   "list",
-		Short: "List cached MobaXterm themes",
-		Args:  cobra.NoArgs,
+		Use:         "list",
+		Short:       "List cached MobaXterm themes",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, home, err := mobaContext()
 			if err != nil {
@@ -75,12 +88,29 @@ func newMobaThemeListCommand() *cobra.Command {
 			}
 			schemes, err := theme.List(mobaThemeCache(home), search, limit)
 			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return newPresenter(cmd, global).Render(clioutput.View{
+						Human: clioutput.Document{Empty: &clioutput.EmptyState{
+							Message: "No cached MobaXterm themes found.",
+							Hint:    "Initialize the cache with `okit mobaxterm theme cache update`.",
+						}},
+						Machine: []string{},
+					})
+				}
 				return runError(err)
 			}
-			for _, scheme := range schemes {
-				fmt.Fprintln(cmd.OutOrStdout(), scheme)
+			document := clioutput.Document{Title: "Cached MobaXterm themes"}
+			if len(schemes) == 0 {
+				document.Title = ""
+				document.Empty = &clioutput.EmptyState{Message: "No themes matched the current filter.", Hint: "Try a different --search value."}
+			} else {
+				table := &clioutput.Table{Headers: []string{"THEME"}}
+				for _, scheme := range schemes {
+					table.Rows = append(table.Rows, []string{scheme})
+				}
+				document.Table = table
 			}
-			return nil
+			return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: schemes})
 		},
 	}
 	command.Flags().StringVar(&search, "search", "", "filter themes by name")
@@ -88,12 +118,13 @@ func newMobaThemeListCommand() *cobra.Command {
 	return command
 }
 
-func newMobaThemeApplyCommand() *cobra.Command {
+func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 	var noBackup, force, dryRun bool
 	command := &cobra.Command{
-		Use:   "apply <name>",
-		Short: "Apply a MobaXterm theme",
-		Args:  cobra.ExactArgs(1),
+		Use:         "apply <name>",
+		Short:       "Apply a MobaXterm theme",
+		Args:        cobra.ExactArgs(1),
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			service, home, err := mobaContext()
 			if err != nil {
@@ -107,9 +138,9 @@ func newMobaThemeApplyCommand() *cobra.Command {
 			if err != nil || len(candidates) == 0 {
 				return runError(fmt.Errorf("MobaXterm installation was not found"))
 			}
-			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), cmd.ErrOrStderr(), "Apply the selected MobaXterm theme?") {
-				fmt.Fprintln(cmd.OutOrStdout(), "theme apply cancelled")
-				return nil
+			presenter := newPresenter(cmd, global)
+			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, "Apply the selected MobaXterm theme?") {
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "Theme application cancelled", Summary: "No changes were made."}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 			}
 			var result theme.Result
 			if noBackup {
@@ -120,8 +151,18 @@ func newMobaThemeApplyCommand() *cobra.Command {
 			if err != nil {
 				return runError(err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "changed=%t backup=%s\n", result.Changed, result.BackupPath)
-			return nil
+			title := "MobaXterm theme applied"
+			summary := ""
+			if dryRun {
+				title = "MobaXterm theme application plan"
+				summary = "No changes were made."
+			} else if !result.Changed {
+				title = "MobaXterm theme is unchanged."
+			}
+			return presenter.Render(clioutput.View{
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Theme", Value: args[0]}, {Label: "Config", Value: candidates[0].ConfigPath}, {Label: "Backup", Value: result.BackupPath}}, Summary: summary},
+				Machine: map[string]any{"status": themeStatus(dryRun, result.Changed), "theme": args[0], "config_path": candidates[0].ConfigPath, "backup_path": result.BackupPath, "changed": result.Changed},
+			})
 		},
 	}
 	command.Flags().BoolVar(&noBackup, "no-backup", false, "do not create a configuration backup")
@@ -130,13 +171,14 @@ func newMobaThemeApplyCommand() *cobra.Command {
 	return command
 }
 
-func newMobaThemeRestoreCommand() *cobra.Command {
+func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 	backup := ""
 	var force, dryRun bool
 	command := &cobra.Command{
-		Use:   "restore",
-		Short: "Restore a MobaXterm configuration backup",
-		Args:  cobra.NoArgs,
+		Use:         "restore",
+		Short:       "Restore a MobaXterm configuration backup",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			service, home, err := mobaContext()
 			if err != nil {
@@ -153,15 +195,23 @@ func newMobaThemeRestoreCommand() *cobra.Command {
 			if err != nil || len(candidates) == 0 {
 				return runError(fmt.Errorf("MobaXterm installation was not found"))
 			}
-			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), cmd.ErrOrStderr(), "Restore the MobaXterm configuration backup?") {
-				fmt.Fprintln(cmd.OutOrStdout(), "theme restore cancelled")
-				return nil
+			presenter := newPresenter(cmd, global)
+			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, "Restore the MobaXterm configuration backup?") {
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "Theme restore cancelled", Summary: "No changes were made."}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 			}
 			if err := theme.Restore(candidates[0].ConfigPath, selected, dryRun); err != nil {
 				return runError(err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "restored=%s\n", selected)
-			return nil
+			title := "MobaXterm configuration restored"
+			summary := ""
+			if dryRun {
+				title = "MobaXterm restore plan"
+				summary = "No changes were made."
+			}
+			return presenter.Render(clioutput.View{
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Backup", Value: selected}, {Label: "Config", Value: candidates[0].ConfigPath}}, Summary: summary},
+				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "backup_path": selected, "config_path": candidates[0].ConfigPath},
+			})
 		},
 	}
 	command.Flags().StringVar(&backup, "backup", "", "backup file to restore (defaults to latest)")
@@ -170,19 +220,19 @@ func newMobaThemeRestoreCommand() *cobra.Command {
 	return command
 }
 
-func newMobaThemeCacheCommand() *cobra.Command {
+func newMobaThemeCacheCommand(global *globalOptions) *cobra.Command {
 	command := commandGroup("cache", "Manage the local theme cache")
 	command.AddCommand(
-		newMobaThemeCacheAction("update", "Update the local theme cache"),
-		newMobaThemeCacheAction("clean", "Remove the local theme cache"),
-		newMobaThemeCacheAction("status", "Display local theme cache status"),
+		newMobaThemeCacheAction("update", "Update the local theme cache", global),
+		newMobaThemeCacheAction("clean", "Remove the local theme cache", global),
+		newMobaThemeCacheAction("status", "Display local theme cache status", global),
 	)
 	return command
 }
 
-func newMobaThemeCacheAction(action, description string) *cobra.Command {
+func newMobaThemeCacheAction(action, description string, global *globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use: action, Short: description, Args: cobra.NoArgs,
+		Use: action, Short: description, Args: cobra.NoArgs, Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, home, err := mobaContext()
 			if err != nil {
@@ -196,16 +246,33 @@ func newMobaThemeCacheAction(action, description string) *cobra.Command {
 				err = theme.CleanCache(home, cachePath, false)
 			case "status":
 				info, statErr := os.Stat(cachePath)
-				if statErr != nil {
-					fmt.Fprintf(cmd.OutOrStdout(), "cache_exists=false path=%s\n", cachePath)
-				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "cache_exists=true modified=%s path=%s\n", info.ModTime().UTC().Format(time.RFC3339), cachePath)
+				if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+					return runError(statErr)
 				}
+				exists := statErr == nil
+				modified := ""
+				if exists {
+					modified = info.ModTime().UTC().Format(time.RFC3339)
+				}
+				document := clioutput.Document{Title: "MobaXterm theme cache status", Fields: []clioutput.Field{{Label: "Exists", Value: boolText(exists)}, {Label: "Path", Value: cachePath}, {Label: "Modified", Value: modified}}}
+				if !exists {
+					document.Hint = "Initialize the cache with `okit mobaxterm theme cache update`."
+				}
+				return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: map[string]any{"exists": exists, "path": cachePath, "modified": modified}})
 			}
 			if err != nil {
 				return runError(err)
 			}
-			return nil
+			title := "MobaXterm theme cache updated"
+			status := "updated"
+			if action == "clean" {
+				title = "MobaXterm theme cache removed"
+				status = "removed"
+			}
+			return newPresenter(cmd, global).Render(clioutput.View{
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Path", Value: cachePath}}},
+				Machine: map[string]any{"status": status, "path": cachePath},
+			})
 		},
 	}
 }
@@ -213,18 +280,19 @@ func newMobaThemeCacheAction(action, description string) *cobra.Command {
 func mobaThemeCache(home string) string   { return filepath.Join(home, "cache", "mobaxterm", "themes") }
 func mobaThemeBackups(home string) string { return filepath.Join(home, "backups", "mobaxterm") }
 
-func newMobaLicenseCommand() *cobra.Command {
+func newMobaLicenseCommand(global *globalOptions) *cobra.Command {
 	command := commandGroup("license", "Manage MobaXterm Pro licenses")
-	command.AddCommand(newMobaLicenseGenerateCommand(), newMobaLicenseDeployCommand(), newMobaLicenseInspectCommand(), newMobaLicenseVerifyCommand())
+	command.AddCommand(newMobaLicenseGenerateCommand(global), newMobaLicenseDeployCommand(global), newMobaLicenseInspectCommand(global), newMobaLicenseVerifyCommand(global))
 	return command
 }
 
-func newMobaLicenseGenerateCommand() *cobra.Command {
+func newMobaLicenseGenerateCommand(global *globalOptions) *cobra.Command {
 	username, version, output := "", "", ""
 	command := &cobra.Command{
-		Use:   "generate",
-		Short: "Generate a MobaXterm license file",
-		Args:  cobra.NoArgs,
+		Use:         "generate",
+		Short:       "Generate a MobaXterm license file",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if _, _, err := mobaContext(); err != nil {
 				return err
@@ -239,8 +307,10 @@ func newMobaLicenseGenerateCommand() *cobra.Command {
 			if err := license.CreateFile(output, key); err != nil {
 				return runError(err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), output)
-			return nil
+			return newPresenter(cmd, global).Render(clioutput.View{
+				Human:   clioutput.Document{Title: "MobaXterm license created", Fields: []clioutput.Field{{Label: "Output", Value: output}, {Label: "Username", Value: username}, {Label: "Version", Value: version}}},
+				Machine: map[string]any{"status": "created", "output": output, "username": username, "version": version},
+			})
 		},
 	}
 	command.Flags().StringVar(&username, "username", "", "licensed username")
@@ -249,13 +319,14 @@ func newMobaLicenseGenerateCommand() *cobra.Command {
 	return command
 }
 
-func newMobaLicenseDeployCommand() *cobra.Command {
+func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 	username, version := "", ""
 	var force, dryRun bool
 	command := &cobra.Command{
-		Use:   "deploy",
-		Short: "Deploy a MobaXterm license",
-		Args:  cobra.NoArgs,
+		Use:         "deploy",
+		Short:       "Deploy a MobaXterm license",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			service, _, err := mobaContext()
 			if err != nil {
@@ -264,23 +335,30 @@ func newMobaLicenseDeployCommand() *cobra.Command {
 			if username == "" {
 				return usageError("deploy requires --username")
 			}
+			presenter := newPresenter(cmd, global)
 			if !dryRun {
 				plan, err := service.DeployLicense(username, version, true)
 				if err != nil {
 					return runError(err)
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), plan)
-				if !force && !confirmAction(cmd.InOrStdin(), cmd.ErrOrStderr(), "Deploy the MobaXterm license file?") {
-					fmt.Fprintln(cmd.OutOrStdout(), "license deploy cancelled")
-					return nil
+				if !force && !confirmAction(cmd.InOrStdin(), presenter, "Deploy the MobaXterm license file? "+plan) {
+					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "License deployment cancelled", Summary: "No changes were made."}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 				}
 			}
 			result, err := service.DeployLicense(username, version, dryRun)
 			if err != nil {
 				return runError(err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), result)
-			return nil
+			title := "MobaXterm license deployed"
+			summary := ""
+			if dryRun {
+				title = "MobaXterm license deployment plan"
+				summary = "No changes were made."
+			}
+			return presenter.Render(clioutput.View{
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Username", Value: username}, {Label: "Version", Value: version}, {Label: "Result", Value: result}}, Summary: summary},
+				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "username": username, "version": version, "result": result},
+			})
 		},
 	}
 	command.Flags().StringVar(&username, "username", "", "licensed username")
@@ -290,9 +368,9 @@ func newMobaLicenseDeployCommand() *cobra.Command {
 	return command
 }
 
-func newMobaLicenseInspectCommand() *cobra.Command {
+func newMobaLicenseInspectCommand(global *globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use: "inspect <file-or-key>", Short: "Inspect a MobaXterm license", Args: cobra.ExactArgs(1),
+		Use: "inspect <file-or-key>", Short: "Inspect a MobaXterm license", Args: cobra.ExactArgs(1), Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, _, err := mobaContext(); err != nil {
 				return err
@@ -305,17 +383,21 @@ func newMobaLicenseInspectCommand() *cobra.Command {
 			if err != nil {
 				return runError(err)
 			}
-			data, _ := json.MarshalIndent(info, "", "  ")
-			fmt.Fprintln(cmd.OutOrStdout(), string(data))
-			return nil
+			return newPresenter(cmd, global).Render(clioutput.View{
+				Human: clioutput.Document{Title: "MobaXterm license", Fields: []clioutput.Field{
+					{Label: "Username", Value: info.Username}, {Label: "Version", Value: info.Version},
+					{Label: "License type", Value: info.LicenseType}, {Label: "User count", Value: strconv.Itoa(info.UserCount)},
+				}},
+				Machine: info,
+			})
 		},
 	}
 }
 
-func newMobaLicenseVerifyCommand() *cobra.Command {
+func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 	username, version := "", ""
 	command := &cobra.Command{
-		Use: "verify <file-or-key>", Short: "Verify a MobaXterm license", Args: cobra.ExactArgs(1),
+		Use: "verify <file-or-key>", Short: "Verify a MobaXterm license", Args: cobra.ExactArgs(1), Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, _, err := mobaContext(); err != nil {
 				return err
@@ -332,15 +414,34 @@ func newMobaLicenseVerifyCommand() *cobra.Command {
 				return runError(err)
 			}
 			if !valid {
-				return runError(fmt.Errorf("license verification failed"))
+				return domainError("MOBA_LICENSE_INVALID", "License verification failed.", "Check the expected username, version, and license input.")
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "valid")
-			return nil
+			return newPresenter(cmd, global).Render(clioutput.View{
+				Human:   clioutput.Document{Title: "MobaXterm license is valid.", Fields: []clioutput.Field{{Label: "Username", Value: username}, {Label: "Version", Value: version}}},
+				Machine: map[string]any{"valid": true, "username": username, "version": version},
+			})
 		},
 	}
 	command.Flags().StringVar(&username, "username", "", "expected licensed username")
 	command.Flags().StringVar(&version, "version", "", "expected MobaXterm version")
 	return command
+}
+
+func themeStatus(dryRun, changed bool) string {
+	if dryRun {
+		return "planned"
+	}
+	if changed {
+		return "updated"
+	}
+	return "unchanged"
+}
+
+func plannedOrCompleted(dryRun bool) string {
+	if dryRun {
+		return "planned"
+	}
+	return "completed"
 }
 
 func readLicenseArgument(value string) (string, error) {
