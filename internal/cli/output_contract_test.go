@@ -2,13 +2,12 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +30,46 @@ func TestEveryLeafCommandDeclaresOutputFormats(t *testing.T) {
 		}
 	}
 	visit(root)
+}
+
+func TestHumanErrorsAcrossCommandFamiliesDoNotExposeDiagnosticProtocol(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OKIT_HOME", home)
+	missing := filepath.Join(home, "missing.bin")
+	badPE := filepath.Join(home, "bad.exe")
+	if err := os.WriteFile(badPE, []byte("not a PE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name string
+		app  func() *App
+		args []string
+	}{
+		{name: "unknown command", app: func() *App { return New("dev") }, args: []string{"unknown"}},
+		{name: "missing argument", app: func() *App { return New("dev") }, args: []string{"shell", "status"}},
+		{name: "hex file error", app: func() *App { return New("dev") }, args: []string{"hex", missing}},
+		{name: "PE parse error", app: func() *App { return New("dev") }, args: []string{"pe", "inspect", badPE}},
+		{name: "config key error", app: func() *App { return New("dev") }, args: []string{"git-sync", "config", "get", "host"}},
+		{name: "MobaXterm argument error", app: func() *App { return New("dev") }, args: []string{"mobaxterm", "license", "inspect"}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := testCase.app().Run(testCase.args, &stdout, &stderr)
+			if code == 0 || stderr.Len() == 0 {
+				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			for _, technical := range []string{"error:", "hint:", "CLI_", "SELF_", "HEX_", "PE_", "CONFIG_", "GITSYNC_", "MOBA_", "SHELL_"} {
+				if strings.Contains(stderr.String(), technical) {
+					t.Fatalf("human output leaked %q: %q", technical, stderr.String())
+				}
+			}
+			if !strings.Contains(stderr.String(), "\n\n") {
+				t.Fatalf("diagnostic does not separate problem and action: %q", stderr.String())
+			}
+		})
+	}
 }
 
 func TestHelpShowsOnlyCommandFormats(t *testing.T) {
@@ -109,19 +148,42 @@ func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
 	}
 }
 
-type failingSelfUpdater struct{ err error }
-
-func (f failingSelfUpdater) Update(context.Context, selfmanage.UpdateOptions) (selfmanage.UpdateResult, error) {
-	return selfmanage.UpdateResult{}, f.err
-}
-
-func TestSelfUpdateDevelopmentVersionHasActionableDiagnostic(t *testing.T) {
+func TestSelfUpdateDevelopmentBuildReturnsInformationalStatus(t *testing.T) {
 	app := New("dev")
-	app.selfUpdater = failingSelfUpdater{err: errors.New(`invalid semantic version "dev"`)}
 	var stdout, stderr bytes.Buffer
 	code := app.Run([]string{"self", "update", "--check"}, &stdout, &stderr)
-	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "SELF_VERSION_INVALID") || !strings.Contains(stderr.String(), "official release") {
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "development builds") || !strings.Contains(stdout.String(), "released version") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = app.Run([]string{"--format", "json", "self", "update", "--check"}, &stdout, &stderr)
+	var status map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &status); code != 0 || err != nil || status["update_supported"] != false || status["reason"] != "development_build" || status["action"] == "" || stderr.Len() != 0 {
+		t.Fatalf("json code=%d status=%v err=%v stderr=%q", code, status, err, stderr.String())
+	}
+}
+
+func TestSelfUpdateLocalSemanticVersionStillUsesDevelopmentStatus(t *testing.T) {
+	app := NewBuildMode("v1.2.3", "abc123", "2026-07-19", BuildModeDevelopment)
+	app.selfUpdater = &fakeSelfUpdater{}
+	var stdout, stderr bytes.Buffer
+	code := app.Run([]string{"self", "update", "--check"}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "development builds") || strings.Contains(stdout.String(), "Update available") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestInvalidReleaseMetadataIsDifferentFromDevelopmentBuild(t *testing.T) {
+	app := NewBuildMode("broken", "abc123", "2026-07-19", BuildModeRelease)
+	var stdout, stderr bytes.Buffer
+	code := app.Run([]string{"self", "update", "--check"}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "invalid version information") || !strings.Contains(stderr.String(), "Reinstall okit") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "development build") || strings.Contains(stderr.String(), "SELF_VERSION_INVALID") {
+		t.Fatalf("release diagnostic is not human-readable or was misclassified: %q", stderr.String())
 	}
 }
 

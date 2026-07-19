@@ -23,7 +23,7 @@ func newPECommand(options *globalOptions) *cobra.Command {
 			for _, path := range files {
 				file, err := os.Open(path)
 				if err != nil {
-					presenter.Error(clioutput.Diagnostic{Code: "PE_FILE_OPEN_FAILED", Message: path + ": " + err.Error(), Hint: "Check that the file exists and is readable."})
+					presenter.Error(clioutput.Diagnostic{Code: "PE_FILE_OPEN_FAILED", Message: path + ": " + err.Error(), Action: "Check that the file exists and is readable."})
 					failed++
 					continue
 				}
@@ -33,7 +33,7 @@ func newPECommand(options *globalOptions) *cobra.Command {
 					parseErr = closeErr
 				}
 				if parseErr != nil {
-					presenter.Error(clioutput.Diagnostic{Code: "PE_PARSE_FAILED", Message: path + ": " + parseErr.Error(), Hint: "Confirm that the input is a valid PE file."})
+					presenter.Error(clioutput.Diagnostic{Code: "PE_PARSE_FAILED", Message: path + ": " + parseErr.Error(), Action: "Confirm that the input is a valid PE file."})
 					failed++
 					continue
 				}

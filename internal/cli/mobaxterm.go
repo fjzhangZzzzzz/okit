@@ -25,7 +25,7 @@ func newMobaXtermCommand(global *globalOptions) *cobra.Command {
 
 func mobaContext() (mobaxterm.Service, string, error) {
 	if runtime.GOOS != "windows" {
-		return mobaxterm.Service{}, "", usageError("mobaxterm is only supported on Windows")
+		return mobaxterm.Service{}, "", usageError("MobaXterm is only supported on Windows")
 	}
 	home, err := config.Home()
 	if err != nil {
@@ -414,7 +414,7 @@ func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 				return runError(err)
 			}
 			if !valid {
-				return domainError("MOBA_LICENSE_INVALID", "license verification failed", "Check the expected username, version, and license input.")
+				return domainError("MOBA_LICENSE_INVALID", "License verification failed.", "Check the expected username, version, and license input.")
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
 				Human:   clioutput.Document{Title: "MobaXterm license is valid.", Fields: []clioutput.Field{{Label: "Username", Value: username}, {Label: "Version", Value: version}}},

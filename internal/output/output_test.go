@@ -65,12 +65,43 @@ func TestEmptyStateIsExplicit(t *testing.T) {
 
 func TestMachineDiagnosticIsJSON(t *testing.T) {
 	var stderr bytes.Buffer
-	New(&bytes.Buffer{}, &stderr, Policy{Format: FormatJSON}).Error(Diagnostic{Code: "TEST", Message: "failed", Hint: "retry"})
+	New(&bytes.Buffer{}, &stderr, Policy{Format: FormatJSON}).Error(Diagnostic{Code: "TEST", Message: "failed", Action: "retry"})
 	var payload map[string]any
 	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
 		t.Fatalf("invalid diagnostic JSON: %v: %q", err, stderr.String())
 	}
 	if payload["level"] != "error" || payload["code"] != "TEST" {
 		t.Fatalf("payload=%v", payload)
+	}
+	if payload["action"] != "retry" {
+		t.Fatalf("action=%v", payload["action"])
+	}
+	if _, exists := payload["hint"]; exists {
+		t.Fatalf("legacy hint field is still exposed: %v", payload)
+	}
+}
+
+func TestHumanDiagnosticUsesNaturalLanguage(t *testing.T) {
+	var stderr bytes.Buffer
+	presenter := New(&bytes.Buffer{}, &stderr, Policy{Format: FormatTable})
+	presenter.Error(Diagnostic{Code: "TEST_FAILURE", Message: "Something went wrong.", Action: "Try again."})
+	if stderr.String() != "Something went wrong.\n\nTry again.\n" {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+	for _, technical := range []string{"error:", "hint:", "TEST_FAILURE"} {
+		if strings.Contains(stderr.String(), technical) {
+			t.Fatalf("human diagnostic leaked %q: %q", technical, stderr.String())
+		}
+	}
+}
+
+func TestVerboseHumanDiagnosticIncludesTechnicalContext(t *testing.T) {
+	var stderr bytes.Buffer
+	presenter := New(&bytes.Buffer{}, &stderr, Policy{Format: FormatTable, Verbose: true})
+	presenter.Error(Diagnostic{Code: "TEST_FAILURE", Message: "Something went wrong.", Fields: map[string]string{"command": "okit test"}})
+	for _, want := range []string{"Something went wrong.", "Diagnostic level: error", "Diagnostic code: TEST_FAILURE", "command: okit test"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("verbose diagnostic does not contain %q: %q", want, stderr.String())
+		}
 	}
 }

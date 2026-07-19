@@ -134,6 +134,11 @@ func TestInfoTextAndJSON_INFO006(t *testing.T) {
 	if strings.Contains(stdout.String(), "supersecret") || strings.Contains(stderr.String(), "supersecret") {
 		t.Fatal("info leaked configuration content")
 	}
+	for _, technical := range []string{"warning:", "PATH_MISSING", "PATH_SHADOWED", "METADATA_MISSING", "INSTALL_DIR_NOT_IN_PATH"} {
+		if strings.Contains(stderr.String(), technical) {
+			t.Fatalf("human info output leaked %q: %q", technical, stderr.String())
+		}
+	}
 
 	stdout.Reset()
 	stderr.Reset()
@@ -302,7 +307,7 @@ func TestUnknownCommandIsUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
 	}
-	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "unknown command") {
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "Unknown command") {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

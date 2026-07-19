@@ -107,11 +107,11 @@ func (p *Presenter) Prompt(text string) error {
 }
 
 func (p *Presenter) Error(d Diagnostic) {
-	writeDiagnostic(p.stderr, p.policy.Format, "error", d)
+	writeDiagnostic(p.stderr, p.policy.Format, "error", p.policy.Verbose, d)
 }
 
 func (p *Presenter) Warning(d Diagnostic) {
-	writeDiagnostic(p.stderr, p.policy.Format, "warning", d)
+	writeDiagnostic(p.stderr, p.policy.Format, "warning", p.policy.Verbose, d)
 }
 
 func (p *Presenter) Verbose(message string, fields ...Field) {

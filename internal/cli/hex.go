@@ -35,7 +35,7 @@ func newHexCommand(global *globalOptions) *cobra.Command {
 			for _, path := range files {
 				file, err := os.Open(path)
 				if err != nil {
-					presenter.Error(clioutput.Diagnostic{Code: "HEX_FILE_OPEN_FAILED", Message: path + ": " + err.Error(), Hint: "Check that the file exists and is readable."})
+					presenter.Error(clioutput.Diagnostic{Code: "HEX_FILE_OPEN_FAILED", Message: path + ": " + err.Error(), Action: "Check that the file exists and is readable."})
 					failed++
 					continue
 				}
@@ -46,7 +46,7 @@ func newHexCommand(global *globalOptions) *cobra.Command {
 					err = closeErr
 				}
 				if err != nil {
-					presenter.Error(clioutput.Diagnostic{Code: "HEX_FILE_READ_FAILED", Message: path + ": " + err.Error(), Hint: "Check that the file can be read completely."})
+					presenter.Error(clioutput.Diagnostic{Code: "HEX_FILE_READ_FAILED", Message: path + ": " + err.Error(), Action: "Check that the file can be read completely."})
 					failed++
 					continue
 				}

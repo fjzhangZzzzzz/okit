@@ -46,7 +46,7 @@ func (a *App) newInfoCommand(options *globalOptions) *cobra.Command {
 			}
 			if options.format == clioutput.FormatTable {
 				for _, warning := range info.Warnings {
-					presenter.Warning(clioutput.Diagnostic{Code: warning.Code, Message: warning.Message})
+					presenter.Warning(clioutput.Diagnostic{Code: warning.Code, Message: upperFirstASCII(warning.Message)})
 				}
 			}
 			return nil

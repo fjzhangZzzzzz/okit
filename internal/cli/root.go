@@ -16,6 +16,7 @@ import (
 
 type App struct {
 	version         string
+	buildMode       string
 	gitSync         gitSyncService
 	selfUpdater     selfUpdater
 	selfUninstaller selfUninstaller
@@ -24,14 +25,36 @@ type App struct {
 	stdin           io.Reader
 }
 
+const (
+	BuildModeDevelopment = "development"
+	BuildModeRelease     = "release"
+)
+
 func New(version string) *App {
-	return &App{version: version, gitSync: gitsync.NewService(nil, nil), stdin: os.Stdin}
+	return &App{version: version, buildMode: inferBuildMode(version), gitSync: gitsync.NewService(nil, nil), stdin: os.Stdin}
 }
 
 func NewBuild(version, commit, date string) *App {
 	app := New(version)
 	app.commit, app.date = commit, date
 	return app
+}
+
+func NewBuildMode(version, commit, date, buildMode string) *App {
+	app := NewBuild(version, commit, date)
+	if buildMode == BuildModeRelease {
+		app.buildMode = BuildModeRelease
+	} else {
+		app.buildMode = BuildModeDevelopment
+	}
+	return app
+}
+
+func inferBuildMode(version string) string {
+	if selfmanage.ValidateVersion(version) == nil {
+		return BuildModeRelease
+	}
+	return BuildModeDevelopment
 }
 
 type gitSyncService interface {
@@ -60,7 +83,20 @@ func (e *exitError) Error() string {
 }
 
 func usageError(format string, args ...any) error {
-	return commandError(2, "CLI_USAGE", fmt.Sprintf(format, args...), "Run the command with --help to see valid usage.")
+	message := fmt.Sprintf(format, args...)
+	if strings.HasPrefix(message, "--") {
+		message = "The " + message
+	} else {
+		message = upperFirstASCII(message)
+	}
+	return commandError(2, "CLI_USAGE", message, "Review this command's help and try again.")
+}
+
+func upperFirstASCII(value string) string {
+	if value == "" || value[0] < 'a' || value[0] > 'z' {
+		return value
+	}
+	return string(value[0]-('a'-'A')) + value[1:]
 }
 
 func runError(err error) error {
@@ -68,12 +104,12 @@ func runError(err error) error {
 	return &exitError{code: 1, diagnostic: diagnostic, cause: err}
 }
 
-func domainError(code, message, hint string) error {
-	return commandError(1, code, message, hint)
+func domainError(code, message, action string) error {
+	return commandError(1, code, message, action)
 }
 
-func commandError(exitCode int, code, message, hint string) error {
-	return &exitError{code: exitCode, diagnostic: clioutput.Diagnostic{Code: code, Message: message, Hint: hint}}
+func commandError(exitCode int, code, message, action string) error {
+	return &exitError{code: exitCode, diagnostic: clioutput.Diagnostic{Code: code, Message: message, Action: action}}
 }
 
 func exitCode(code int) error {
@@ -103,18 +139,45 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 				if coded.cause != nil {
 					presenter.Verbose("underlying failure", clioutput.Field{Label: "cause", Value: coded.cause.Error()})
 				}
+				if coded.code == 2 && coded.diagnostic.Code == "CLI_USAGE" {
+					coded.diagnostic.Action = commandHelpAction(commandPath)
+				}
 				presenter.Error(coded.diagnostic)
 			}
 			return coded.code
 		}
-		presenter.Error(clioutput.Diagnostic{
-			Code: "CLI_USAGE", Message: err.Error(),
-			Hint:   "Run the command with --help to see valid usage.",
-			Fields: map[string]string{"command": commandPath},
-		})
+		diagnostic := cobraUsageDiagnostic(err, commandPath)
+		presenter.Error(diagnostic)
 		return 2
 	}
 	return 0
+}
+
+func cobraUsageDiagnostic(err error, commandPath string) clioutput.Diagnostic {
+	raw := err.Error()
+	message := "This command couldn't be used as written."
+	switch {
+	case strings.HasPrefix(raw, "unknown command "):
+		message = strings.Replace(raw, "unknown command", "Unknown command", 1)
+	case strings.HasPrefix(raw, "unknown flag: "):
+		message = strings.Replace(raw, "unknown flag:", "Unknown option", 1)
+	case strings.Contains(raw, "unknown shorthand flag"):
+		message = strings.Replace(raw, "unknown shorthand flag", "Unknown short option", 1)
+	case (strings.Contains(raw, "accepts ") || strings.Contains(raw, "requires at least")) && strings.Contains(raw, "received 0"):
+		message = "This command is missing a required argument."
+	case strings.Contains(raw, "accepts ") && strings.Contains(raw, "received"):
+		message = "This command received the wrong number of arguments."
+	case strings.Contains(raw, "required flag") && strings.Contains(raw, "not set"):
+		message = "This command is missing a required option."
+	}
+	return clioutput.Diagnostic{
+		Code: "CLI_USAGE", Message: message, Action: commandHelpAction(commandPath),
+		Fields: map[string]string{"command": commandPath, "cause": raw},
+	}
+}
+
+func commandHelpAction(commandPath string) string {
+	return "Run `" + commandPath + " --help` to review the available arguments and options."
 }
 
 func runtimeDiagnostic(err error) clioutput.Diagnostic {
@@ -122,18 +185,18 @@ func runtimeDiagnostic(err error) clioutput.Diagnostic {
 	switch {
 	case strings.Contains(message, "shell.repo-url is not configured"):
 		return clioutput.Diagnostic{
-			Code: "SHELL_REPOSITORY_NOT_CONFIGURED", Message: "shell configuration repository is not configured",
-			Hint: "Set it with `okit shell config set repo-url <url>`.",
+			Code: "SHELL_REPOSITORY_NOT_CONFIGURED", Message: "The shell configuration repository isn't configured.",
+			Action: "Set it with `okit shell config set repo-url <url>`.",
 		}
 	case strings.Contains(message, "MobaXterm installation was not found"):
 		return clioutput.Diagnostic{
 			Code: "MOBA_INSTALLATION_NOT_FOUND", Message: "MobaXterm installation was not found",
-			Hint: "Run `okit mobaxterm status` to inspect detected installations.",
+			Action: "Run `okit mobaxterm status` to inspect detected installations.",
 		}
 	default:
 		return clioutput.Diagnostic{
-			Code: "CLI_RUNTIME", Message: "the command could not be completed",
-			Hint: "Re-run with --verbose for the underlying diagnostic context.",
+			Code: "CLI_RUNTIME", Message: "The command couldn't be completed.",
+			Action: "Re-run with --verbose for the underlying diagnostic context.",
 		}
 	}
 }

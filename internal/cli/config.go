@@ -28,7 +28,7 @@ func newConfigCommand(namespace string, global *globalOptions) *cobra.Command {
 					return runError(err)
 				}
 				if !ok {
-					return domainError("CONFIG_KEY_NOT_SET", "configuration key "+quoteValue(key)+" is not set", "Set it with `okit "+namespace+" config set "+args[0]+" <value>`.")
+					return domainError("CONFIG_KEY_NOT_SET", "Configuration key "+quoteValue(key)+" isn't set.", "Set it with `okit "+namespace+" config set "+args[0]+" <value>`.")
 				}
 				presenter := newPresenter(cmd, global)
 				if global.format == clioutput.FormatTable || global.format == clioutput.FormatRaw {

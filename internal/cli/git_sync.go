@@ -80,7 +80,7 @@ func (a *App) newGitSyncRunCommand(global *globalOptions) *cobra.Command {
 				if result.Err != nil {
 					presenter.Error(clioutput.Diagnostic{
 						Code: "GITSYNC_REPOSITORY_FAILED", Message: result.Plan.Root + ": " + result.Err.Error(),
-						Hint: "Re-run with --verbose after checking the repository and remote configuration.",
+						Action: "Re-run with --verbose after checking the repository and remote configuration.",
 					})
 					table.Rows = append(table.Rows, []string{gitRepositoryName(result.Plan), "failed", result.Plan.RemoteRoot, "-"})
 					machine = append(machine, map[string]any{"status": "error", "plan": result.Plan, "error": result.Err.Error()})

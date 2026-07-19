@@ -27,8 +27,25 @@ func (a *App) newSelfUpdateCommand(global *globalOptions) *cobra.Command {
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if a.buildMode == BuildModeDevelopment {
+				return newPresenter(cmd, global).Render(clioutput.View{
+					Human: clioutput.Document{
+						Title: "Update checks aren't available for development builds.",
+						Hint:  "Install a released version of okit, then run this command again.",
+					},
+					Machine: map[string]any{
+						"update_supported": false,
+						"reason":           "development_build",
+						"action":           "Install a released version of okit, then run this command again.",
+					},
+				})
+			}
 			if err := selfmanage.ValidateVersion(a.version); err != nil {
-				return domainError("SELF_VERSION_INVALID", "cannot check for updates from version "+quoteVersion(a.version), "Install an official release or build with semantic version metadata.")
+				return domainError(
+					"SELF_VERSION_INVALID",
+					"This okit installation has invalid version information.",
+					"Reinstall okit from an official release.",
+				)
 			}
 			updater := a.selfUpdater
 			if updater == nil {
@@ -40,11 +57,8 @@ func (a *App) newSelfUpdateCommand(global *globalOptions) *cobra.Command {
 			}
 			result, err := updater.Update(context.Background(), options)
 			if err != nil {
-				if strings.Contains(err.Error(), "invalid semantic version") {
-					return domainError("SELF_VERSION_INVALID", "cannot check for updates from version "+quoteVersion(a.version), "Install an official release or build with semantic version metadata.")
-				}
 				if strings.Contains(err.Error(), "403") {
-					return domainError("SELF_RELEASE_ACCESS_DENIED", "the release service denied the update request", "Retry later or configure GH_TOKEN/GITHUB_TOKEN if the service rate limit was reached.")
+					return domainError("SELF_RELEASE_ACCESS_DENIED", "The release service denied the update request.", "Retry later or configure GH_TOKEN/GITHUB_TOKEN if the service rate limit was reached.")
 				}
 				return runError(err)
 			}
@@ -154,8 +168,6 @@ func (a *App) newSelfUninstallCommand(global *globalOptions) *cobra.Command {
 	command.Flags().BoolVar(&options.DryRun, "dry-run", false, "show the uninstall plan without changing files")
 	return command
 }
-
-func quoteVersion(version string) string { return `"` + version + `"` }
 
 func uninstallAction(dryRun, scheduled bool) string {
 	if dryRun {
