@@ -348,10 +348,14 @@ func TestFeatureConfigKeysAreConsistentlyNamespaced(t *testing.T) {
 
 type fakeSelfUpdater struct {
 	options selfmanage.UpdateOptions
+	result  selfmanage.UpdateResult
 }
 
 func (f *fakeSelfUpdater) Update(_ context.Context, options selfmanage.UpdateOptions) (selfmanage.UpdateResult, error) {
 	f.options = options
+	if f.result.Available != "" {
+		return f.result, nil
+	}
 	return selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}, nil
 }
 
@@ -386,6 +390,15 @@ func TestTerminalUpdateProgressRendersEnglishLibraryProgress(t *testing.T) {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("progress output missing %q: %q", want, output.String())
 		}
+	}
+}
+
+func TestTerminalUpdateProgressRendersScheduledCompletion(t *testing.T) {
+	var output bytes.Buffer
+	reporter := &terminalUpdateProgress{writer: &output}
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressComplete, Version: "v1.1.0", Scheduled: true})
+	if !strings.Contains(output.String(), "Update scheduled") || !strings.Contains(output.String(), "after the current process exits") {
+		t.Fatalf("scheduled completion is not human-readable: %q", output.String())
 	}
 }
 

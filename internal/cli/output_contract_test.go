@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
 	"github.com/spf13/cobra"
 )
 
@@ -145,6 +146,22 @@ func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
 	var payload map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil || payload["update_available"] != true {
 		t.Fatalf("payload=%v err=%v", payload, err)
+	}
+}
+
+func TestSelfUpdateScheduledHumanOutputExplainsWhenItTakesEffect(t *testing.T) {
+	updater := &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Updated: true, Scheduled: true}}
+	app := New("v1.0.0")
+	app.selfUpdater = updater
+	var stdout, stderr bytes.Buffer
+	if code := app.Run([]string{"self", "update"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Update scheduled") || !strings.Contains(stdout.String(), "after the current process exits") {
+		t.Fatalf("scheduled output is not actionable: %q", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "scheduled: true") {
+		t.Fatalf("human output leaked machine field: %q", stdout.String())
 	}
 }
 

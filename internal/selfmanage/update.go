@@ -49,10 +49,11 @@ const (
 
 // Progress reports a self-update stage. Total is zero when the download size is unknown.
 type Progress struct {
-	Stage   ProgressStage
-	Current int64
-	Total   int64
-	Version string
+	Stage     ProgressStage
+	Current   int64
+	Total     int64
+	Version   string
+	Scheduled bool
 }
 
 // ProgressReporter receives optional, best-effort update progress notifications.
@@ -191,7 +192,7 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 		}
 	}
 	result.Updated, result.Scheduled = true, scheduled
-	reportProgress(options.Progress, Progress{Stage: ProgressComplete, Version: release.Version})
+	reportProgress(options.Progress, Progress{Stage: ProgressComplete, Version: release.Version, Scheduled: scheduled})
 	return result, nil
 }
 

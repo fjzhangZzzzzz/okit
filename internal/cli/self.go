@@ -79,6 +79,7 @@ func (a *App) newSelfUpdateCommand(global *globalOptions) *cobra.Command {
 				title = "Update plan"
 			} else if result.Scheduled {
 				title = "Update scheduled"
+				hint = "The new version will be active after the current process exits."
 			} else if result.Updated {
 				title = "okit updated successfully."
 			} else if available {
@@ -191,6 +192,9 @@ func updateProgressMessage(progress selfmanage.Progress) string {
 	case selfmanage.ProgressReplace:
 		return "Replacing executable..."
 	case selfmanage.ProgressComplete:
+		if progress.Scheduled {
+			return "Update scheduled; the new version will be active after the current process exits."
+		}
 		return "Update completed successfully."
 	default:
 		return "Updating..."
