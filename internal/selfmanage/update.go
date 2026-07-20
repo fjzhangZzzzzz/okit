@@ -183,6 +183,7 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 		return UpdateResult{}, err
 	}
 	metadata.Version = release.Version
+	metadata.Channel = releaseChannel(release.Version)
 	removeStaging = !scheduled
 	if !scheduled {
 		if err := SaveMetadata(u.OKITHome, metadata); err != nil {
@@ -192,6 +193,14 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 	result.Updated, result.Scheduled = true, scheduled
 	reportProgress(options.Progress, Progress{Stage: ProgressComplete, Version: release.Version})
 	return result, nil
+}
+
+func releaseChannel(version string) string {
+	parsed, err := parseVersion(version)
+	if err == nil && parsed.prerelease != "" {
+		return "prerelease"
+	}
+	return "stable"
 }
 
 func reportProgress(reporter ProgressReporter, progress Progress) {

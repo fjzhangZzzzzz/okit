@@ -49,7 +49,6 @@ trap cleanup EXIT HUP INT TERM
 
 export OKIT_HOME=$okit_home
 export OKIT_INSTALL_DIR=$install_dir
-export OKIT_VERSION=$version
 
 stage_binary() {
   [ -f "$binary" ] || fail "binary does not exist: $binary"
@@ -61,7 +60,7 @@ stage_binary() {
 {
   "method": "official",
   "version": "$version",
-  "channel": "stable",
+  "channel": "$(case "$version" in *-*) printf prerelease ;; *) printf stable ;; esac)",
   "executable": "$escaped_executable",
   "path_entries": [],
   "managed_files": []
@@ -88,12 +87,12 @@ else
   previous=$(gh api "repos/$repository/releases" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | grep -vx "$version" | head -n 1 || true)
   if [ -n "$previous" ]; then
     log "Install previous release $previous"
-    OKIT_VERSION=$previous sh "$script_dir/install.sh"
+    sh "$script_dir/install.sh" --version "$previous"
     log "Update $previous to $version"
     "$executable" self update --version "$version"
   else
     log "Install first release $version"
-    sh "$script_dir/install.sh"
+    sh "$script_dir/install.sh" --version "$version"
   fi
 fi
 

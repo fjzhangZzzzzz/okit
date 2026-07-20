@@ -96,6 +96,18 @@ func TestReleaseSelection_SELF001_SELF002(t *testing.T) {
 	}
 }
 
+func TestReleaseChannel(t *testing.T) {
+	for version, want := range map[string]string{
+		"v1.2.3":       "stable",
+		"v1.2.3+build": "stable",
+		"v1.2.3-rc.1":  "prerelease",
+	} {
+		if got := releaseChannel(version); got != want {
+			t.Errorf("releaseChannel(%q) = %q, want %q", version, got, want)
+		}
+	}
+}
+
 func TestChecksumOrDownloadFailureDoesNotReplace_SELF003(t *testing.T) {
 	dir := t.TempDir()
 	executable := filepath.Join(dir, "okit")
@@ -298,17 +310,21 @@ func TestUpdaterReportsProgressStages(t *testing.T) {
 	updater := Updater{
 		CurrentVersion: "v1.0.0", Executable: filepath.Join(root, "okit.exe"), OKITHome: filepath.Join(root, "home"),
 		Metadata: &Metadata{Method: "official"},
-		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0", AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
+		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0-rc.1", Prerelease: true, AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
 		Downloader: fakeDownload{data: map[string][]byte{
 			"asset": archive.Bytes(), "sum": []byte(fmt.Sprintf("%x  okit.zip\n", digest)),
 		}},
 		Replace: func(_, _ string) (bool, error) { return false, nil },
 	}
-	_, err = updater.Update(context.Background(), UpdateOptions{Progress: ProgressFunc(func(progress Progress) {
+	_, err = updater.Update(context.Background(), UpdateOptions{Prerelease: true, Progress: ProgressFunc(func(progress Progress) {
 		stages = append(stages, progress.Stage)
 	})})
 	if err != nil {
 		t.Fatal(err)
+	}
+	metadata, err := LoadMetadata(filepath.Join(root, "home"))
+	if err != nil || metadata.Channel != "prerelease" {
+		t.Fatalf("metadata=%+v err=%v", metadata, err)
 	}
 	want := []ProgressStage{ProgressUpdateAvailable, ProgressDownloadAsset, ProgressDownloadChecksum, ProgressVerifyChecksum, ProgressExtract, ProgressReplace, ProgressComplete}
 	if len(stages) != len(want) {

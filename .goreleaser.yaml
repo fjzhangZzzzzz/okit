@@ -26,6 +26,7 @@ checksum:
   name_template: checksums.txt
 
 release:
+  prerelease: auto
   extra_files:
     - glob: ./.release/release-manifest.json
     - glob: ./scripts/install.sh

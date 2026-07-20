@@ -20,11 +20,14 @@ func repositoryFile(t *testing.T, parts ...string) string {
 func TestInstallersVerifyReleaseAndWriteOfficialMetadata(t *testing.T) {
 	for _, file := range []string{"install.sh", "install.ps1"} {
 		content := repositoryFile(t, "scripts", file)
-		for _, required := range []string{"checksums", "SHA256", "install.json", "official", "OKIT_VERSION"} {
+		for _, required := range []string{"checksums", "SHA256", "install.json", "official"} {
 			if !strings.Contains(strings.ToUpper(content), strings.ToUpper(required)) {
 				t.Errorf("%s does not contain %q", file, required)
 			}
 		}
+	}
+	if !strings.Contains(repositoryFile(t, "scripts", "install.sh"), "--version") {
+		t.Error("install.sh must accept --version")
 	}
 	for _, file := range []string{"install.sh", "install.ps1"} {
 		content := repositoryFile(t, "scripts", file)
@@ -36,6 +39,12 @@ func TestInstallersVerifyReleaseAndWriteOfficialMetadata(t *testing.T) {
 		}
 	}
 	powerShell := repositoryFile(t, "scripts", "install.ps1")
+	if !strings.Contains(powerShell, "param(") || !strings.Contains(powerShell, "[string]$Version") {
+		t.Error("PowerShell installer must accept -Version instead of OKIT_VERSION")
+	}
+	if strings.Contains(repositoryFile(t, "scripts", "install.sh"), "OKIT_VERSION") || strings.Contains(powerShell, "OKIT_VERSION") {
+		t.Error("installers must not require OKIT_VERSION to select a release")
+	}
 	if !strings.Contains(powerShell, "UTF8Encoding]::new($false)") {
 		t.Error("PowerShell installer may write BOM-prefixed JSON that Go cannot decode")
 	}
@@ -55,10 +64,13 @@ func TestGoReleaserBuildsDocumentedMatrixAndPublishesInstallers(t *testing.T) {
 
 func TestWorkflowsSeparateRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	releaseWorkflow := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate"} {
+	for _, required := range []string{"smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate", "cleanup-release-candidates", "--cleanup-tag", "-rc."} {
 		if !strings.Contains(releaseWorkflow, required) {
 			t.Errorf("release workflow does not contain %q", required)
 		}
+	}
+	if !strings.Contains(repositoryFile(t, ".goreleaser.yaml"), "prerelease: auto") {
+		t.Error("GoReleaser must publish prerelease tags as GitHub prereleases")
 	}
 	for _, file := range []string{"smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1"} {
 		smoke := repositoryFile(t, "scripts", file)

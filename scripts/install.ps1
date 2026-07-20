@@ -1,8 +1,12 @@
+param(
+    [string]$Version
+)
+
 $ErrorActionPreference = 'Stop'
 $repo = 'fjzhangZzzzzz/okit'
 $okitHome = if ($env:OKIT_HOME) { $env:OKIT_HOME } else { Join-Path $HOME '.okit' }
 $installDir = if ($env:OKIT_INSTALL_DIR) { $env:OKIT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\okit\bin' }
-$requestedVersion = $env:OKIT_VERSION
+$requestedVersion = $Version
 $releaseRoot = if ($env:OKIT_RELEASE_BASE_URL) { $env:OKIT_RELEASE_BASE_URL.TrimEnd('/') } else { "https://github.com/$repo/releases" }
 
 function Assert-SafeFilename([string]$Name, [string]$Kind) {
@@ -13,7 +17,7 @@ function Assert-SafeFilename([string]$Name, [string]$Kind) {
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'okit requires a 64-bit Windows system' }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
-if ($requestedVersion -and $requestedVersion -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid OKIT_VERSION: $requestedVersion" }
+if ($requestedVersion -and $requestedVersion -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid -Version: $requestedVersion" }
 
 $manifestURL = if ($requestedVersion) {
     "$releaseRoot/download/$requestedVersion/release-manifest.json"
@@ -25,6 +29,7 @@ if ($manifest.schema -ne 1) { throw "Unsupported release manifest schema: $($man
 $version = [string]$manifest.version
 if ($version -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid version in release manifest: $version" }
 if ($requestedVersion -and $version -ne $requestedVersion) { throw "Release manifest version $version does not match requested version $requestedVersion" }
+$channel = if ($version -like '*-*') { 'prerelease' } else { 'stable' }
 $target = "windows-$arch"
 $assetProperty = $manifest.assets.PSObject.Properties[$target]
 if (-not $assetProperty -or -not $assetProperty.Value) { throw "Release manifest has no asset for $target" }
@@ -77,7 +82,7 @@ try {
         $addedPath = $true
     }
     $metadata = [ordered]@{
-        method = 'official'; version = $version; channel = 'stable'
+        method = 'official'; version = $version; channel = $channel
         executable = $executable
         path_entries = @()
         managed_files = @()

@@ -18,7 +18,6 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $smokeRoot = $null
 $originalOKITHome = $env:OKIT_HOME
 $originalInstallDir = $env:OKIT_INSTALL_DIR
-$originalVersion = $env:OKIT_VERSION
 if (-not $env:OKIT_HOME -or -not $env:OKIT_INSTALL_DIR) {
     $smokeRoot = Join-Path ([IO.Path]::GetTempPath()) ('okit-smoke-' + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $smokeRoot | Out-Null
@@ -28,14 +27,13 @@ $installDir = if ($env:OKIT_INSTALL_DIR) { $env:OKIT_INSTALL_DIR } else { Join-P
 $executable = Join-Path $installDir 'okit.exe'
 $env:OKIT_HOME = $okitHome
 $env:OKIT_INSTALL_DIR = $installDir
-$env:OKIT_VERSION = $Version
 
 function Stage-Binary {
     if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) { Fail "binary does not exist: $Binary" }
     New-Item -ItemType Directory -Force -Path $installDir, $okitHome | Out-Null
     Copy-Item -LiteralPath $Binary -Destination $executable -Force
     $metadata = [ordered]@{
-        method = 'official'; version = $Version; channel = 'stable'; executable = $executable
+        method = 'official'; version = $Version; channel = $(if ($Version -like '*-*') { 'prerelease' } else { 'stable' }); executable = $executable
         path_entries = @(); managed_files = @()
     }
     [IO.File]::WriteAllText(
@@ -79,16 +77,14 @@ try {
         $previous = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -ne $Version } | Select-Object -First 1
         if ($previous) {
             Write-Phase "Install previous release $($previous.tag_name)"
-            $env:OKIT_VERSION = $previous.tag_name
-            & (Join-Path $PSScriptRoot 'install.ps1')
+            & (Join-Path $PSScriptRoot 'install.ps1') -Version $previous.tag_name
             Write-Phase "Update $($previous.tag_name) to $Version"
             & $executable self update --version $Version
             if ($LASTEXITCODE -ne 0) { Fail 'self update failed' }
-            $env:OKIT_VERSION = $Version
         }
         else {
             Write-Phase "Install first release $Version"
-            & (Join-Path $PSScriptRoot 'install.ps1')
+            & (Join-Path $PSScriptRoot 'install.ps1') -Version $Version
         }
     }
 
@@ -123,5 +119,4 @@ finally {
     if ($smokeRoot) { Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue }
     if ($null -eq $originalOKITHome) { Remove-Item Env:OKIT_HOME -ErrorAction SilentlyContinue } else { $env:OKIT_HOME = $originalOKITHome }
     if ($null -eq $originalInstallDir) { Remove-Item Env:OKIT_INSTALL_DIR -ErrorAction SilentlyContinue } else { $env:OKIT_INSTALL_DIR = $originalInstallDir }
-    if ($null -eq $originalVersion) { Remove-Item Env:OKIT_VERSION -ErrorAction SilentlyContinue } else { $env:OKIT_VERSION = $originalVersion }
 }
