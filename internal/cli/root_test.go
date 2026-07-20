@@ -375,6 +375,20 @@ func TestSelfUpdateParsesDocumentedOptions(t *testing.T) {
 	}
 }
 
+func TestTerminalUpdateProgressRendersEnglishLibraryProgress(t *testing.T) {
+	var output bytes.Buffer
+	reporter := &terminalUpdateProgress{writer: &output}
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressUpdateAvailable, Version: "v1.1.0"})
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressDownloadAsset})
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressDownloadAsset, Current: 1024, Total: 1024})
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressComplete, Version: "v1.1.0"})
+	for _, want := range []string{"Update available: v1.1.0", "Downloading update", "100%", "Update completed successfully."} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("progress output missing %q: %q", want, output.String())
+		}
+	}
+}
+
 func TestSelfUninstallParsesDocumentedOptions(t *testing.T) {
 	uninstaller := &fakeSelfUninstaller{}
 	app := New("v1.0.0")

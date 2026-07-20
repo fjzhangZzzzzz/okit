@@ -3,13 +3,17 @@ package cli
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fjzhangZzzzzz/okit/internal/config"
 	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -54,6 +58,9 @@ func (a *App) newSelfUpdateCommand(global *globalOptions) *cobra.Command {
 					return runError(err)
 				}
 				updater = &selfmanage.Updater{CurrentVersion: a.version, Executable: executable, OKITHome: home}
+			}
+			if global.format != "json" && !options.Check && !options.DryRun && isTerminal(cmd.ErrOrStderr()) {
+				options.Progress = &terminalUpdateProgress{writer: cmd.ErrOrStderr()}
 			}
 			result, err := updater.Update(context.Background(), options)
 			if err != nil {
@@ -106,6 +113,107 @@ func (a *App) newSelfUpdateCommand(global *globalOptions) *cobra.Command {
 	command.Flags().BoolVar(&options.Prerelease, "prerelease", false, "include prerelease versions")
 	command.Flags().BoolVar(&options.DryRun, "dry-run", false, "show the update plan without changing files")
 	return command
+}
+
+type terminalUpdateProgress struct {
+	writer io.Writer
+	stage  selfmanage.ProgressStage
+	bar    *progressbar.ProgressBar
+	barMax int64
+}
+
+func (p *terminalUpdateProgress) ReportProgress(progress selfmanage.Progress) {
+	previousStage := p.stage
+	switch progress.Stage {
+	case selfmanage.ProgressUpdateAvailable:
+		_, _ = fmt.Fprintln(p.writer, updateProgressMessage(progress))
+	case selfmanage.ProgressDownloadAsset, selfmanage.ProgressDownloadChecksum:
+		p.renderDownload(progress, previousStage)
+	case selfmanage.ProgressComplete:
+		p.finishBar()
+		_, _ = fmt.Fprintln(p.writer, updateProgressMessage(progress))
+	default:
+		p.finishBar()
+		_, _ = fmt.Fprintln(p.writer, updateProgressMessage(progress))
+	}
+	p.stage = progress.Stage
+}
+
+func (p *terminalUpdateProgress) renderDownload(progress selfmanage.Progress, previousStage selfmanage.ProgressStage) {
+	if p.bar == nil || previousStage != progress.Stage {
+		p.finishBar()
+		p.newDownloadBar(progress)
+	} else if p.barMax <= 0 && progress.Total > 0 {
+		_ = p.bar.Clear()
+		p.newDownloadBar(progress)
+	}
+	if p.bar != nil {
+		_ = p.bar.Set64(progress.Current)
+	}
+}
+
+func (p *terminalUpdateProgress) newDownloadBar(progress selfmanage.Progress) {
+	maximum := progress.Total
+	if maximum <= 0 {
+		maximum = -1
+	}
+	p.barMax = maximum
+	p.bar = progressbar.NewOptions64(maximum,
+		progressbar.OptionSetWriter(p.writer),
+		progressbar.OptionSetDescription(updateProgressMessage(progress)),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetWidth(16),
+		progressbar.OptionThrottle(65*time.Millisecond),
+	)
+}
+
+func (p *terminalUpdateProgress) finishBar() {
+	if p.bar == nil {
+		return
+	}
+	_ = p.bar.Finish()
+	p.bar = nil
+	p.barMax = 0
+}
+
+func updateProgressMessage(progress selfmanage.Progress) string {
+	switch progress.Stage {
+	case selfmanage.ProgressUpdateAvailable:
+		return fmt.Sprintf("Update available: %s", progress.Version)
+	case selfmanage.ProgressDownloadAsset:
+		return downloadProgressMessage("Downloading update", progress)
+	case selfmanage.ProgressDownloadChecksum:
+		return downloadProgressMessage("Downloading checksums", progress)
+	case selfmanage.ProgressVerifyChecksum:
+		return "Verifying checksum..."
+	case selfmanage.ProgressExtract:
+		return "Extracting update..."
+	case selfmanage.ProgressReplace:
+		return "Replacing executable..."
+	case selfmanage.ProgressComplete:
+		return "Update completed successfully."
+	default:
+		return "Updating..."
+	}
+}
+
+func downloadProgressMessage(prefix string, progress selfmanage.Progress) string {
+	if progress.Total > 0 {
+		return fmt.Sprintf("%s... %d%% (%d/%d bytes)", prefix, progress.Current*100/progress.Total, progress.Current, progress.Total)
+	}
+	if progress.Current > 0 {
+		return fmt.Sprintf("%s... %d bytes", prefix, progress.Current)
+	}
+	return prefix + "..."
+}
+
+func isTerminal(writer io.Writer) bool {
+	file, ok := writer.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 func (a *App) newSelfUninstallCommand(global *globalOptions) *cobra.Command {
