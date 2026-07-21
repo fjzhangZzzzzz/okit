@@ -61,3 +61,25 @@ jobs:
           OKIT_HOME: ${{ runner.temp }}\okit-home
           OKIT_INSTALL_DIR: ${{ runner.temp }}\okit-bin
         run: scripts/smoke-release-lifecycle.ps1 -Mode release -Version $env:OKIT_VERSION -Repository "${{ github.repository }}"
+
+  cleanup-release-candidates:
+    needs: [smoke-release-lifecycle-linux, smoke-release-lifecycle-windows]
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete release candidates for the published version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FINAL_VERSION: ${{ github.ref_name }}
+        run: |
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | while IFS= read -r tag; do
+            case "$tag" in
+              "$FINAL_VERSION"-rc.[0-9]*)
+                suffix=${tag#"$FINAL_VERSION"-rc.}
+                case "$suffix" in
+                  ''|*[!0-9]*) continue ;;
+                esac
+                gh release delete "$tag" --cleanup-tag --yes
+                ;;
+            esac
+          done

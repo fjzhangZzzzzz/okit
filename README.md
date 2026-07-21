@@ -55,6 +55,19 @@ Windows PowerShell：
 irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 | iex
 ```
 
+安装指定版本（包括预发布版本）时传入版本参数，版本号必须带 `v` 前缀：
+
+```sh
+curl -fsSL https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.sh | sh -s -- --version v1.2.3
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1))) -Version v1.2.3
+```
+
+已安装版本可使用 `okit self update --version v1.2.3` 精确升级；使用
+`okit self update --prerelease` 会允许选择较新的预发布版本。
+
 `install.sh` 和 `install.ps1` 是每次 GitHub Release 的独立发布产物，不要求用户
 预先安装 Go、Python 或 uv。安装脚本负责识别平台和架构、下载对应压缩包、验证
 SHA-256 校验和并安装到用户目录。

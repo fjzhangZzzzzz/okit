@@ -6,6 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -91,6 +93,18 @@ func TestReleaseSelection_SELF001_SELF002(t *testing.T) {
 	selected, err = SelectRelease("v1.2.0", []Release{{Version: "v1.3.0-rc.2", Prerelease: true}, {Version: "v1.3.0-rc.10", Prerelease: true}}, UpdateOptions{Prerelease: true})
 	if err != nil || selected.Version != "v1.3.0-rc.10" {
 		t.Fatalf("semantic prerelease ordering selected=%+v err=%v", selected, err)
+	}
+}
+
+func TestReleaseChannel(t *testing.T) {
+	for version, want := range map[string]string{
+		"v1.2.3":       "stable",
+		"v1.2.3+build": "stable",
+		"v1.2.3-rc.1":  "prerelease",
+	} {
+		if got := releaseChannel(version); got != want {
+			t.Errorf("releaseChannel(%q) = %q, want %q", version, got, want)
+		}
 	}
 }
 
@@ -252,5 +266,73 @@ func TestUpToDateCheckIsSuccessful_SELF001(t *testing.T) {
 	result, err := updater.Update(context.Background(), UpdateOptions{Check: true})
 	if err != nil || result.Current != "v1.0.0" || result.Available != "v1.0.0" || result.Updated {
 		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestHTTPDownloaderReportsProgress(t *testing.T) {
+	payload := bytes.Repeat([]byte("x"), 64*1024)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Length", fmt.Sprint(len(payload)))
+		_, _ = writer.Write(payload)
+	}))
+	defer server.Close()
+
+	var updates []Progress
+	data, err := (HTTPDownloader{Client: server.Client()}).DownloadWithProgress(context.Background(), server.URL, func(current, total int64) {
+		updates = append(updates, Progress{Current: current, Total: total})
+	})
+	if err != nil || !bytes.Equal(data, payload) {
+		t.Fatalf("err=%v bytes=%d", err, len(data))
+	}
+	if len(updates) < 2 || updates[0].Current != 0 || updates[0].Total != int64(len(payload)) {
+		t.Fatalf("initial progress=%+v", updates)
+	}
+	last := updates[len(updates)-1]
+	if last.Current != int64(len(payload)) || last.Total != int64(len(payload)) {
+		t.Fatalf("final progress=%+v", last)
+	}
+}
+
+func TestUpdaterReportsProgressStages(t *testing.T) {
+	root := t.TempDir()
+	archive := bytes.NewBuffer(nil)
+	zipWriter := zip.NewWriter(archive)
+	file, err := zipWriter.Create("okit.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = file.Write([]byte("new executable"))
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(archive.Bytes())
+	var stages []ProgressStage
+	updater := Updater{
+		CurrentVersion: "v1.0.0", Executable: filepath.Join(root, "okit.exe"), OKITHome: filepath.Join(root, "home"),
+		Metadata: &Metadata{Method: "official"},
+		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0-rc.1", Prerelease: true, AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
+		Downloader: fakeDownload{data: map[string][]byte{
+			"asset": archive.Bytes(), "sum": []byte(fmt.Sprintf("%x  okit.zip\n", digest)),
+		}},
+		Replace: func(_, _ string) (bool, error) { return false, nil },
+	}
+	_, err = updater.Update(context.Background(), UpdateOptions{Prerelease: true, Progress: ProgressFunc(func(progress Progress) {
+		stages = append(stages, progress.Stage)
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := LoadMetadata(filepath.Join(root, "home"))
+	if err != nil || metadata.Channel != "prerelease" {
+		t.Fatalf("metadata=%+v err=%v", metadata, err)
+	}
+	want := []ProgressStage{ProgressUpdateAvailable, ProgressDownloadAsset, ProgressDownloadChecksum, ProgressVerifyChecksum, ProgressExtract, ProgressReplace, ProgressComplete}
+	if len(stages) != len(want) {
+		t.Fatalf("stages=%v want=%v", stages, want)
+	}
+	for index := range want {
+		if stages[index] != want[index] {
+			t.Fatalf("stages=%v want=%v", stages, want)
+		}
 	}
 }

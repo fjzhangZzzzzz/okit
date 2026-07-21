@@ -4,9 +4,23 @@ set -eu
 repo="fjzhangZzzzzz/okit"
 okit_home="${OKIT_HOME:-$HOME/.okit}"
 install_dir="${OKIT_INSTALL_DIR:-$HOME/.local/bin}"
-requested_version="${OKIT_VERSION:-}"
 release_root="${OKIT_RELEASE_BASE_URL:-https://github.com/$repo/releases}"
 release_root=${release_root%/}
+
+usage() {
+  cat <<'EOF'
+Usage: install.sh [--version vMAJOR.MINOR.PATCH[-PRERELEASE]]
+EOF
+}
+
+requested_version=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --version) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; requested_version=$2; shift 2 ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 1 ;;
+  esac
+done
 
 case "$(uname -s)" in
   Linux) os=linux ;;
@@ -19,7 +33,7 @@ case "$(uname -m)" in
 esac
 
 if [ -n "$requested_version" ] && ! printf '%s\n' "$requested_version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
-  echo "invalid OKIT_VERSION: $requested_version" >&2
+  echo "invalid --version: $requested_version" >&2
   exit 1
 fi
 
@@ -49,6 +63,10 @@ if [ -n "$requested_version" ] && [ "$version" != "$requested_version" ]; then
   echo "release manifest version $version does not match requested version $requested_version" >&2
   exit 1
 fi
+case "$version" in
+  *-*) channel=prerelease ;;
+  *) channel=stable ;;
+esac
 target="$os-$arch"
 asset=$(json_string "$target")
 checksums_name=$(json_string checksums)
@@ -85,7 +103,7 @@ cat >"$metadata_tmp" <<EOF
 {
   "method": "official",
   "version": "$version",
-  "channel": "stable",
+  "channel": "$channel",
   "executable": "$metadata_executable",
   "path_entries": [],
   "managed_files": []

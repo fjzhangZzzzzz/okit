@@ -109,12 +109,13 @@ release 模式需要 GitHub CLI 和网络访问；binary 模式不验证 GitHub 
 Linux：
 
 ```sh
-curl -fsSL https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.sh | OKIT_VERSION=v1.2.3 sh
 ```
 
 Windows PowerShell：
 
 ```powershell
+$env:OKIT_VERSION = 'v1.2.3'
 irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 | iex
 ```
 
@@ -123,7 +124,10 @@ irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 |
 - 安装器通过固定名称 manifest 解析最新版，不依赖 GitHub REST API 或用户 Token。
 - 安装脚本默认安装到用户可写目录，不隐式请求管理员权限。
 - 安装脚本必须支持固定版本；`latest` 只能解析最新正式版本，不选择预发布。
-- 固定版本通过 `OKIT_VERSION=vMAJOR.MINOR.PATCH`（PowerShell 为环境变量）选择。
+- 固定版本通过安装器参数选择：Linux 使用 `--version vMAJOR.MINOR.PATCH`，
+  PowerShell 使用 `-Version vMAJOR.MINOR.PATCH`。
+- 包含预发布标识的版本写入 `channel: prerelease`；正式版本写入
+  `channel: stable`。
 - 脚本不得要求系统预装 Go、Python、uv 或 GoReleaser。
 - 安装目录不在 PATH 时，脚本只添加自身的用户级目录或给出明确提示，不覆盖既有
   PATH 内容。
@@ -131,6 +135,14 @@ irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 |
 安装、升级和卸载应保持幂等，不修改与 `okit` 无关的 PATH 条目或文件。未来可在
 GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个版本的阻塞项。
 通过包管理器安装时，`okit self` 不接管升级或卸载，必须提示用户使用原包管理器。
+
+## 预发布与清理
+
+- `vMAJOR.MINOR.PATCH-rc.N` 发布为 GitHub Pre-release，用于真实安装和升级验收。
+- `okit self update --prerelease` 允许选择预发布版本；精确升级使用
+  `okit self update --version vMAJOR.MINOR.PATCH-rc.N`。
+- 对应正式版本 `vMAJOR.MINOR.PATCH` 发布并完成 Linux/Windows 生命周期烟测后，
+  工作流立即删除所有 `vMAJOR.MINOR.PATCH-rc.N` GitHub Release 及其 tag。
 
 ## 发布前检查
 

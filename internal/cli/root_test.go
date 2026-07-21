@@ -348,10 +348,14 @@ func TestFeatureConfigKeysAreConsistentlyNamespaced(t *testing.T) {
 
 type fakeSelfUpdater struct {
 	options selfmanage.UpdateOptions
+	result  selfmanage.UpdateResult
 }
 
 func (f *fakeSelfUpdater) Update(_ context.Context, options selfmanage.UpdateOptions) (selfmanage.UpdateResult, error) {
 	f.options = options
+	if f.result.Available != "" {
+		return f.result, nil
+	}
 	return selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}, nil
 }
 
@@ -372,6 +376,38 @@ func TestSelfUpdateParsesDocumentedOptions(t *testing.T) {
 	code := app.Run([]string{"self", "update", "--check", "--version", "v1.1.0", "--prerelease", "--dry-run"}, &stdout, &stderr)
 	if code != 0 || !updater.options.Check || !updater.options.DryRun || !updater.options.Prerelease || updater.options.Version != "v1.1.0" {
 		t.Fatalf("code=%d options=%+v stdout=%q stderr=%q", code, updater.options, stdout.String(), stderr.String())
+	}
+}
+
+func TestTerminalUpdateProgressRendersEnglishLibraryProgress(t *testing.T) {
+	var output bytes.Buffer
+	reporter := &terminalUpdateProgress{writer: &output}
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressUpdateAvailable, Version: "v1.1.0"})
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressDownloadAsset})
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressDownloadAsset, Current: 1024, Total: 1024})
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressComplete, Version: "v1.1.0"})
+	for _, want := range []string{"Update available: v1.1.0", "Downloading update", "100%", "Update completed successfully."} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("progress output missing %q: %q", want, output.String())
+		}
+	}
+}
+
+func TestTerminalUpdateProgressRendersScheduledCompletion(t *testing.T) {
+	var output bytes.Buffer
+	reporter := &terminalUpdateProgress{writer: &output}
+	reporter.ReportProgress(selfmanage.Progress{Stage: selfmanage.ProgressComplete, Version: "v1.1.0", Scheduled: true})
+	if !strings.Contains(output.String(), "Update scheduled") || !strings.Contains(output.String(), "after the current process exits") {
+		t.Fatalf("scheduled completion is not human-readable: %q", output.String())
+	}
+}
+
+func TestDownloadProgressDescriptionDoesNotEmbedStaleCounters(t *testing.T) {
+	for _, stage := range []selfmanage.ProgressStage{selfmanage.ProgressDownloadAsset, selfmanage.ProgressDownloadChecksum} {
+		message := updateProgressMessage(selfmanage.Progress{Stage: stage, Current: 0, Total: 402})
+		if strings.Contains(message, "%") || strings.Contains(message, "bytes") || strings.Contains(message, "402") {
+			t.Fatalf("progress description embeds counters for %s: %q", stage, message)
+		}
 	}
 }
 
