@@ -163,6 +163,25 @@ func TestSelfUpdateScheduledHumanOutputExplainsWhenItTakesEffect(t *testing.T) {
 	if strings.Contains(stdout.String(), "scheduled: true") {
 		t.Fatalf("human output leaked machine field: %q", stdout.String())
 	}
+	if strings.Contains(stdout.String(), "Current:") || strings.Contains(stdout.String(), "Available:") {
+		t.Fatalf("scheduled output exposed check-only fields: %q", stdout.String())
+	}
+}
+
+func TestSelfUpdateAppliedHumanOutputShowsTargetOnly(t *testing.T) {
+	updater := &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Updated: true}}
+	app := New("v1.0.0")
+	app.selfUpdater = updater
+	var stdout, stderr bytes.Buffer
+	if code := app.Run([]string{"self", "update"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Updated to:") || !strings.Contains(stdout.String(), "v1.1.0") {
+		t.Fatalf("applied output does not identify target: %q", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Current:") || strings.Contains(stdout.String(), "Available:") {
+		t.Fatalf("applied output exposed check-only fields: %q", stdout.String())
+	}
 }
 
 func TestSelfUpdateDevelopmentBuildReturnsInformationalStatus(t *testing.T) {

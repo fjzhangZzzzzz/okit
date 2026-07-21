@@ -85,10 +85,15 @@ func (a *App) newSelfUpdateCommand(global *globalOptions) *cobra.Command {
 			} else if available {
 				title = "Update selected"
 			}
-			document := clioutput.Document{
-				Title:  title,
-				Fields: []clioutput.Field{{Label: "Current", Value: result.Current}, {Label: "Available", Value: result.Available}},
-				Hint:   hint,
+			document := clioutput.Document{Title: title, Hint: hint}
+			if options.Check || options.DryRun {
+				document.Fields = []clioutput.Field{{Label: "Current", Value: result.Current}, {Label: "Available", Value: result.Available}}
+			} else if result.Updated {
+				label := "Updated to"
+				if result.Scheduled {
+					label = "Target"
+				}
+				document.Fields = []clioutput.Field{{Label: label, Value: result.Available}}
 			}
 			if options.DryRun {
 				if result.Plan != "" {
@@ -182,9 +187,9 @@ func updateProgressMessage(progress selfmanage.Progress) string {
 	case selfmanage.ProgressUpdateAvailable:
 		return fmt.Sprintf("Update available: %s", progress.Version)
 	case selfmanage.ProgressDownloadAsset:
-		return downloadProgressMessage("Downloading update", progress)
+		return "Downloading update"
 	case selfmanage.ProgressDownloadChecksum:
-		return downloadProgressMessage("Downloading checksums", progress)
+		return "Downloading checksums"
 	case selfmanage.ProgressVerifyChecksum:
 		return "Verifying checksum..."
 	case selfmanage.ProgressExtract:
@@ -199,16 +204,6 @@ func updateProgressMessage(progress selfmanage.Progress) string {
 	default:
 		return "Updating..."
 	}
-}
-
-func downloadProgressMessage(prefix string, progress selfmanage.Progress) string {
-	if progress.Total > 0 {
-		return fmt.Sprintf("%s... %d%% (%d/%d bytes)", prefix, progress.Current*100/progress.Total, progress.Current, progress.Total)
-	}
-	if progress.Current > 0 {
-		return fmt.Sprintf("%s... %d bytes", prefix, progress.Current)
-	}
-	return prefix + "..."
 }
 
 func isTerminal(writer io.Writer) bool {

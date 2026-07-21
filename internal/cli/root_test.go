@@ -402,6 +402,15 @@ func TestTerminalUpdateProgressRendersScheduledCompletion(t *testing.T) {
 	}
 }
 
+func TestDownloadProgressDescriptionDoesNotEmbedStaleCounters(t *testing.T) {
+	for _, stage := range []selfmanage.ProgressStage{selfmanage.ProgressDownloadAsset, selfmanage.ProgressDownloadChecksum} {
+		message := updateProgressMessage(selfmanage.Progress{Stage: stage, Current: 0, Total: 402})
+		if strings.Contains(message, "%") || strings.Contains(message, "bytes") || strings.Contains(message, "402") {
+			t.Fatalf("progress description embeds counters for %s: %q", stage, message)
+		}
+	}
+}
+
 func TestSelfUninstallParsesDocumentedOptions(t *testing.T) {
 	uninstaller := &fakeSelfUninstaller{}
 	app := New("v1.0.0")
