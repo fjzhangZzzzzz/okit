@@ -3,8 +3,6 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,24 +32,13 @@ func TestEveryLeafCommandDeclaresOutputFormats(t *testing.T) {
 }
 
 func TestHumanErrorsAcrossCommandFamiliesDoNotExposeDiagnosticProtocol(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("OKIT_HOME", home)
-	missing := filepath.Join(home, "missing.bin")
-	badPE := filepath.Join(home, "bad.exe")
-	if err := os.WriteFile(badPE, []byte("not a PE"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	cases := []struct {
 		name string
 		app  func() *App
 		args []string
 	}{
 		{name: "unknown command", app: func() *App { return New("dev") }, args: []string{"unknown"}},
-		{name: "missing argument", app: func() *App { return New("dev") }, args: []string{"shell", "status"}},
-		{name: "hex file error", app: func() *App { return New("dev") }, args: []string{"hex", missing}},
-		{name: "PE parse error", app: func() *App { return New("dev") }, args: []string{"pe", "inspect", badPE}},
-		{name: "config key error", app: func() *App { return New("dev") }, args: []string{"git-sync", "config", "get", "host"}},
+		{name: "卸载参数错误", app: func() *App { return New("dev") }, args: []string{"uninstall", "unexpected"}},
 		{name: "MobaXterm argument error", app: func() *App { return New("dev") }, args: []string{"mobaxterm", "license", "inspect"}},
 	}
 	for _, testCase := range cases {
@@ -75,52 +62,12 @@ func TestHumanErrorsAcrossCommandFamiliesDoNotExposeDiagnosticProtocol(t *testin
 
 func TestHelpShowsOnlyCommandFormats(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := New("dev").Run([]string{"self", "update", "--help"}, &stdout, &stderr)
+	code := New("dev").Run([]string{"upgrade", "--help"}, &stdout, &stderr)
 	if code != 0 || stderr.Len() != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "output format: table, json") || strings.Contains(stdout.String(), "table, json, csv") {
+	if !strings.Contains(stdout.String(), "输出格式：table, json") || strings.Contains(stdout.String(), "table, json, csv") {
 		t.Fatalf("help formats are not command-specific: %q", stdout.String())
-	}
-}
-
-func TestGitSyncStatusHasExplicitEmptyStateAndJSON(t *testing.T) {
-	t.Setenv("OKIT_HOME", t.TempDir())
-	app := New("dev")
-	var stdout, stderr bytes.Buffer
-	if code := app.Run([]string{"git-sync", "status"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "No git-sync configuration found") || !strings.Contains(stdout.String(), "config set") {
-		t.Fatalf("empty state is not actionable: %q", stdout.String())
-	}
-
-	stdout.Reset()
-	stderr.Reset()
-	if code := app.Run([]string{"--format", "json", "git-sync", "status"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	var payload map[string]string
-	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil || len(payload) != 0 || stderr.Len() != 0 {
-		t.Fatalf("payload=%v err=%v stderr=%q", payload, err, stderr.String())
-	}
-}
-
-func TestConfigSetReportsMutation(t *testing.T) {
-	t.Setenv("OKIT_HOME", t.TempDir())
-	var stdout, stderr bytes.Buffer
-	code := New("dev").Run([]string{"shell", "config", "set", "repo-url", "https://example.invalid/config.git"}, &stdout, &stderr)
-	if code != 0 || !strings.Contains(stdout.String(), "Configuration updated") || !strings.Contains(stdout.String(), "shell.repo-url") || stderr.Len() != 0 {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-}
-
-func TestQuietKeepsBusinessResult(t *testing.T) {
-	t.Setenv("OKIT_HOME", t.TempDir())
-	var stdout, stderr bytes.Buffer
-	code := NewBuild("v2.0.0", "abc123", "2026-07-18").Run([]string{"--quiet", "info"}, &stdout, &stderr)
-	if code != 0 || !strings.Contains(stdout.String(), "v2.0.0") || !strings.Contains(stdout.String(), "executable") {
-		t.Fatalf("quiet discarded business result: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
 
@@ -129,10 +76,10 @@ func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
 	app := New("v1.0.0")
 	app.selfUpdater = updater
 	var stdout, stderr bytes.Buffer
-	if code := app.Run([]string{"self", "update", "--check"}, &stdout, &stderr); code != 0 {
+	if code := app.Run([]string{"upgrade", "--check"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	for _, want := range []string{"Update available", "v1.0.0", "v1.1.0", "okit self update"} {
+	for _, want := range []string{"有可用更新", "v1.0.0", "v1.1.0", "okit upgrade"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("output does not contain %q: %q", want, stdout.String())
 		}
@@ -140,7 +87,7 @@ func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := app.Run([]string{"--format", "json", "self", "update", "--check"}, &stdout, &stderr); code != 0 {
+	if code := app.Run([]string{"--format", "json", "upgrade", "--check"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	var payload map[string]any
@@ -154,16 +101,16 @@ func TestSelfUpdateScheduledHumanOutputExplainsWhenItTakesEffect(t *testing.T) {
 	app := New("v1.0.0")
 	app.selfUpdater = updater
 	var stdout, stderr bytes.Buffer
-	if code := app.Run([]string{"self", "update"}, &stdout, &stderr); code != 0 {
+	if code := app.Run([]string{"upgrade"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Update scheduled") || !strings.Contains(stdout.String(), "after the current process exits") {
+	if !strings.Contains(stdout.String(), "已计划更新") || !strings.Contains(stdout.String(), "当前进程退出后") {
 		t.Fatalf("scheduled output is not actionable: %q", stdout.String())
 	}
 	if strings.Contains(stdout.String(), "scheduled: true") {
 		t.Fatalf("human output leaked machine field: %q", stdout.String())
 	}
-	if strings.Contains(stdout.String(), "Current:") || strings.Contains(stdout.String(), "Available:") {
+	if strings.Contains(stdout.String(), "当前版本:") || strings.Contains(stdout.String(), "可用版本:") {
 		t.Fatalf("scheduled output exposed check-only fields: %q", stdout.String())
 	}
 }
@@ -173,13 +120,13 @@ func TestSelfUpdateAppliedHumanOutputShowsTargetOnly(t *testing.T) {
 	app := New("v1.0.0")
 	app.selfUpdater = updater
 	var stdout, stderr bytes.Buffer
-	if code := app.Run([]string{"self", "update"}, &stdout, &stderr); code != 0 {
+	if code := app.Run([]string{"upgrade"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Updated to:") || !strings.Contains(stdout.String(), "v1.1.0") {
+	if !strings.Contains(stdout.String(), "已更新至:") || !strings.Contains(stdout.String(), "v1.1.0") {
 		t.Fatalf("applied output does not identify target: %q", stdout.String())
 	}
-	if strings.Contains(stdout.String(), "Current:") || strings.Contains(stdout.String(), "Available:") {
+	if strings.Contains(stdout.String(), "当前版本:") || strings.Contains(stdout.String(), "可用版本:") {
 		t.Fatalf("applied output exposed check-only fields: %q", stdout.String())
 	}
 }
@@ -187,14 +134,14 @@ func TestSelfUpdateAppliedHumanOutputShowsTargetOnly(t *testing.T) {
 func TestSelfUpdateDevelopmentBuildReturnsInformationalStatus(t *testing.T) {
 	app := New("dev")
 	var stdout, stderr bytes.Buffer
-	code := app.Run([]string{"self", "update", "--check"}, &stdout, &stderr)
-	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "development builds") || !strings.Contains(stdout.String(), "released version") {
+	code := app.Run([]string{"upgrade", "--check"}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "开发构建") || !strings.Contains(stdout.String(), "已发布") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
 	stdout.Reset()
 	stderr.Reset()
-	code = app.Run([]string{"--format", "json", "self", "update", "--check"}, &stdout, &stderr)
+	code = app.Run([]string{"--format", "json", "upgrade", "--check"}, &stdout, &stderr)
 	var status map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &status); code != 0 || err != nil || status["update_supported"] != false || status["reason"] != "development_build" || status["action"] == "" || stderr.Len() != 0 {
 		t.Fatalf("json code=%d status=%v err=%v stderr=%q", code, status, err, stderr.String())
@@ -205,8 +152,8 @@ func TestSelfUpdateLocalSemanticVersionStillUsesDevelopmentStatus(t *testing.T) 
 	app := NewBuildMode("v1.2.3", "abc123", "2026-07-19", BuildModeDevelopment)
 	app.selfUpdater = &fakeSelfUpdater{}
 	var stdout, stderr bytes.Buffer
-	code := app.Run([]string{"self", "update", "--check"}, &stdout, &stderr)
-	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "development builds") || strings.Contains(stdout.String(), "Update available") {
+	code := app.Run([]string{"upgrade", "--check"}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "开发构建") || strings.Contains(stdout.String(), "有可用更新") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
@@ -214,8 +161,8 @@ func TestSelfUpdateLocalSemanticVersionStillUsesDevelopmentStatus(t *testing.T) 
 func TestInvalidReleaseMetadataIsDifferentFromDevelopmentBuild(t *testing.T) {
 	app := NewBuildMode("broken", "abc123", "2026-07-19", BuildModeRelease)
 	var stdout, stderr bytes.Buffer
-	code := app.Run([]string{"self", "update", "--check"}, &stdout, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), "invalid version information") || !strings.Contains(stderr.String(), "Reinstall okit") {
+	code := app.Run([]string{"upgrade", "--check"}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "版本信息无效") || !strings.Contains(stderr.String(), "重新安装 okit") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if strings.Contains(stderr.String(), "development build") || strings.Contains(stderr.String(), "SELF_VERSION_INVALID") {
@@ -225,32 +172,12 @@ func TestInvalidReleaseMetadataIsDifferentFromDevelopmentBuild(t *testing.T) {
 
 func TestJSONUsageErrorIsMachineReadable(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := New("dev").Run([]string{"--format", "json", "shell", "status"}, &stdout, &stderr)
+	code := New("dev").Run([]string{"--format", "json", "uninstall", "unexpected"}, &stdout, &stderr)
 	if code != 2 || stdout.Len() != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	var diagnostic map[string]any
 	if err := json.Unmarshal(stderr.Bytes(), &diagnostic); err != nil || diagnostic["level"] != "error" || diagnostic["code"] != "CLI_USAGE" {
 		t.Fatalf("diagnostic=%v err=%v stderr=%q", diagnostic, err, stderr.String())
-	}
-}
-
-func TestGitSyncJSONLProducesOneObjectPerRepository(t *testing.T) {
-	app := New("dev")
-	app.gitSync = fakeGitSyncService{}
-	var stdout, stderr bytes.Buffer
-	code := app.Run([]string{"--format", "jsonl", "git-sync", "run", "one", "two", "--host", "dev", "--target-root", "/srv"}, &stdout, &stderr)
-	if code != 0 || stderr.Len() != 0 {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("JSONL line count=%d output=%q", len(lines), stdout.String())
-	}
-	for _, line := range lines {
-		var payload map[string]any
-		if err := json.Unmarshal([]byte(line), &payload); err != nil {
-			t.Fatalf("invalid JSONL line %q: %v", line, err)
-		}
 	}
 }

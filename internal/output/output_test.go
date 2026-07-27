@@ -11,14 +11,14 @@ func TestRenderDocument(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	presenter := New(&stdout, &stderr, Policy{Format: FormatTable})
 	err := presenter.Render(View{Human: Document{
-		Title:  "Update available",
-		Fields: []Field{{Label: "Current", Value: "v1.0.0"}, {Label: "Latest", Value: "v1.1.0"}},
-		Hint:   "Run `okit self update` to install.",
+		Title:  "有可用更新",
+		Fields: []Field{{Label: "当前版本", Value: "v1.0.0"}, {Label: "最新版本", Value: "v1.1.0"}},
+		Hint:   "运行 `okit upgrade` 安装。",
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Update available", "Current:", "v1.0.0", "Latest:", "Run `okit self update`"} {
+	for _, want := range []string{"有可用更新", "当前版本:", "v1.0.0", "最新版本:", "运行 `okit upgrade`"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("output does not contain %q: %q", want, stdout.String())
 		}

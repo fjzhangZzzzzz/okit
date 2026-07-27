@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fjzhangZzzzzz/okit/internal/gitsync"
 	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
 	"github.com/spf13/cobra"
@@ -17,7 +16,6 @@ import (
 type App struct {
 	version         string
 	buildMode       string
-	gitSync         gitSyncService
 	selfUpdater     selfUpdater
 	selfUninstaller selfUninstaller
 	commit          string
@@ -31,7 +29,7 @@ const (
 )
 
 func New(version string) *App {
-	return &App{version: version, buildMode: inferBuildMode(version), gitSync: gitsync.NewService(nil, nil), stdin: os.Stdin}
+	return &App{version: version, buildMode: inferBuildMode(version), stdin: os.Stdin}
 }
 
 func NewBuild(version, commit, date string) *App {
@@ -55,10 +53,6 @@ func inferBuildMode(version string) string {
 		return BuildModeRelease
 	}
 	return BuildModeDevelopment
-}
-
-type gitSyncService interface {
-	Run(context.Context, []string, gitsync.Options) []gitsync.Result
 }
 
 type selfUpdater interface {
@@ -158,7 +152,7 @@ func cobraUsageDiagnostic(err error, commandPath string) clioutput.Diagnostic {
 	message := "This command couldn't be used as written."
 	switch {
 	case strings.HasPrefix(raw, "unknown command "):
-		message = strings.Replace(raw, "unknown command", "Unknown command", 1)
+		message = strings.Replace(raw, "unknown command", "未知命令", 1)
 	case strings.HasPrefix(raw, "unknown flag: "):
 		message = strings.Replace(raw, "unknown flag:", "Unknown option", 1)
 	case strings.Contains(raw, "unknown shorthand flag"):
@@ -183,11 +177,6 @@ func commandHelpAction(commandPath string) string {
 func runtimeDiagnostic(err error) clioutput.Diagnostic {
 	message := err.Error()
 	switch {
-	case strings.Contains(message, "shell.repo-url is not configured"):
-		return clioutput.Diagnostic{
-			Code: "SHELL_REPOSITORY_NOT_CONFIGURED", Message: "The shell configuration repository isn't configured.",
-			Action: "Set it with `okit shell config set repo-url <url>`.",
-		}
 	case strings.Contains(message, "MobaXterm installation was not found"):
 		return clioutput.Diagnostic{
 			Code: "MOBA_INSTALLATION_NOT_FOUND", Message: "MobaXterm installation was not found",
@@ -215,7 +204,7 @@ func (a *App) newRootCommand() *cobra.Command {
 func (a *App) newRootCommandWithOptions(options *globalOptions) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "okit",
-		Short:         "Cross-platform developer toolkit",
+		Short:         "MobaXterm 维护与 okit 安装生命周期工具",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Version:       a.version,
@@ -240,27 +229,23 @@ func (a *App) newRootCommandWithOptions(options *globalOptions) *cobra.Command {
 	}
 	root.SetVersionTemplate(a.versionOutput())
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.PersistentFlags().StringVar(&options.format, "format", "table", "output format (where supported)")
-	root.PersistentFlags().BoolVar(&options.noColor, "no-color", false, "disable ANSI colors")
-	root.PersistentFlags().BoolVar(&options.quiet, "quiet", false, "hide progress and nonessential hints")
-	root.PersistentFlags().BoolVar(&options.verbose, "verbose", false, "show additional diagnostic context")
+	root.PersistentFlags().StringVar(&options.format, "format", "table", "输出格式（按命令支持情况而定）")
+	root.PersistentFlags().BoolVar(&options.noColor, "no-color", false, "禁用 ANSI 颜色")
+	root.PersistentFlags().BoolVar(&options.quiet, "quiet", false, "隐藏进度与非必要提示")
+	root.PersistentFlags().BoolVar(&options.verbose, "verbose", false, "显示额外诊断上下文")
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		formatFlag := root.PersistentFlags().Lookup("format")
 		originalUsage := formatFlag.Usage
-		formatFlag.Usage = "output format: " + strings.Join(commandFormats(cmd), ", ")
+		formatFlag.Usage = "输出格式：" + strings.Join(commandFormats(cmd), ", ")
 		defer func() { formatFlag.Usage = originalUsage }()
 		defaultHelp(cmd, args)
 	})
 
 	root.AddCommand(
-		a.newInfoCommand(options),
-		newHexCommand(options),
-		newPECommand(options),
-		a.newGitSyncCommand(options),
-		newShellCommand(options),
 		newMobaXtermCommand(options),
-		a.newSelfCommand(options),
+		a.newUpgradeCommand(options),
+		a.newUninstallCommand(options),
 	)
 	root.AddCommand(&cobra.Command{
 		Use:    "version",

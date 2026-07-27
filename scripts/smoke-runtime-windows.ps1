@@ -27,12 +27,10 @@ try {
     & okit.exe --help | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail "--help exited with status $LASTEXITCODE" }
 
-    $info = (& okit.exe info --format json | Out-String) | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0) { Fail "info exited with status $LASTEXITCODE" }
-    if ($info.platform -notlike 'windows/*') { Fail "unexpected platform: $($info.platform)" }
-    if ($info.path_status -ne 'ok') { Fail "unexpected PATH status: $($info.path_status)" }
-    if (-not $info.install_dir_in_path) { Fail 'install directory was not detected in PATH' }
-    if ($info.data_dir -ne $env:OKIT_HOME) { Fail "data directory is $($info.data_dir), expected $env:OKIT_HOME" }
+    & okit.exe upgrade --help | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "upgrade help exited with status $LASTEXITCODE" }
+    & okit.exe uninstall --help | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "uninstall help exited with status $LASTEXITCODE" }
 
     Write-Host 'Windows runtime smoke test passed'
 }

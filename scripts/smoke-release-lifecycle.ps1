@@ -79,8 +79,8 @@ try {
             Write-Phase "Install previous release $($previous.tag_name)"
             & (Join-Path $PSScriptRoot 'install.ps1') -Version $previous.tag_name
             Write-Phase "Update $($previous.tag_name) to $Version"
-            & $executable self update --version $Version
-            if ($LASTEXITCODE -ne 0) { Fail 'self update failed' }
+            & $executable upgrade --version $Version
+	            if ($LASTEXITCODE -ne 0) { Fail '升级失败' }
         }
         else {
             Write-Phase "Install first release $Version"
@@ -97,15 +97,15 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'Windows Git Bash runtime smoke failed' }
 
     Write-Phase 'Run release lifecycle command checks'
-    & $executable hex (Join-Path $repoRoot 'LICENSE') --length 16
-    if ($LASTEXITCODE -ne 0) { Fail 'hex smoke check failed' }
+    & $executable upgrade --help
+    if ($LASTEXITCODE -ne 0) { Fail '升级帮助冒烟检查失败' }
 
     Write-Phase 'Verify uninstall preserves user data'
     New-Item -ItemType Directory -Force -Path $okitHome | Out-Null
     New-Item -ItemType File -Force -Path (Join-Path $okitHome 'user-data') | Out-Null
-    & $executable self uninstall --dry-run
+    & $executable uninstall --dry-run
     if ($LASTEXITCODE -ne 0) { Fail 'uninstall dry-run failed' }
-    & $executable self uninstall
+    & $executable uninstall
     if ($LASTEXITCODE -ne 0) { Fail 'uninstall failed' }
     for ($attempt = 0; $attempt -lt 20 -and (Test-Path -LiteralPath $executable); $attempt++) {
         Start-Sleep -Milliseconds 250

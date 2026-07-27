@@ -40,13 +40,7 @@ export MSYS2_ENV_CONV_EXCL=OKIT_HOME
 actual=$(okit --version)
 grep -Fx "okit $version" <<<"$actual" >/dev/null || fail "version output does not contain okit $version"
 okit --help >/dev/null
-info=$(okit info --format json)
-grep -F '"platform": "windows/' <<<"$info" >/dev/null || fail "info did not report Windows"
-grep -F '"path_status": "ok"' <<<"$info" >/dev/null || fail "PATH did not resolve to the tested executable"
-grep -F '"install_dir_in_path": true' <<<"$info" >/dev/null || fail "install directory was not detected in PATH"
-
-expected_data_dir=$(cygpath -w "$OKIT_HOME")
-expected_data_dir_json=$(sed 's/\\/\\\\/g' <<<"$expected_data_dir")
-grep -F "\"data_dir\": \"$expected_data_dir_json\"" <<<"$info" >/dev/null || fail "MSYS OKIT_HOME was not converted correctly"
+okit upgrade --help >/dev/null
+okit uninstall --help >/dev/null
 
 printf '%s\n' 'Windows Git Bash runtime smoke test passed'

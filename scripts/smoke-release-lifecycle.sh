@@ -89,7 +89,7 @@ else
     log "Install previous release $previous"
     sh "$script_dir/install.sh" --version "$previous"
     log "Update $previous to $version"
-    "$executable" self update --version "$version"
+    "$executable" upgrade --version "$version"
   else
     log "Install first release $version"
     sh "$script_dir/install.sh" --version "$version"
@@ -102,12 +102,12 @@ log "Run installed binary runtime smoke"
 sh "$script_dir/smoke-runtime-linux.sh" --executable "$executable" --version "$version"
 
 log "Run release lifecycle command checks"
-"$executable" hex "$repo_root/LICENSE" --length 16
+"$executable" upgrade --help
 
 log "Verify uninstall preserves user data"
 touch "$okit_home/user-data"
-"$executable" self uninstall --dry-run
-"$executable" self uninstall
+"$executable" uninstall --dry-run
+"$executable" uninstall
 [ ! -e "$executable" ] || fail "executable was not uninstalled: $executable"
 [ -e "$okit_home/user-data" ] || fail "default uninstall removed user data"
 
