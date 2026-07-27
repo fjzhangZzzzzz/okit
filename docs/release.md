@@ -109,14 +109,13 @@ release 模式需要 GitHub CLI 和网络访问；binary 模式不验证 GitHub 
 Linux：
 
 ```sh
-curl -fsSL https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.sh | OKIT_VERSION=v1.2.3 sh
+curl -fsSL https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.sh | sh -s -- --version v1.2.3
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:OKIT_VERSION = 'v1.2.3'
-irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 | iex
+& ([scriptblock]::Create((irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1))) -Version v1.2.3
 ```
 
 - `install.sh` 下载匹配 Linux 架构的压缩包，验证校验和后安装。
