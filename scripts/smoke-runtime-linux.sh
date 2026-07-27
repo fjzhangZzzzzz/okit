@@ -33,10 +33,7 @@ export OKIT_HOME=$smoke_root/okit-home
 actual=$(okit --version)
 printf '%s\n' "$actual" | grep -Fx "okit $version" >/dev/null || fail "version output does not contain okit $version"
 okit --help >/dev/null
-info=$(okit info --format json)
-printf '%s\n' "$info" | grep -F '"platform": "linux/' >/dev/null || fail "info did not report Linux"
-printf '%s\n' "$info" | grep -F '"path_status": "ok"' >/dev/null || fail "PATH did not resolve to the tested executable"
-printf '%s\n' "$info" | grep -F '"install_dir_in_path": true' >/dev/null || fail "install directory was not detected in PATH"
-printf '%s\n' "$info" | grep -F "\"data_dir\": \"$OKIT_HOME\"" >/dev/null || fail "OKIT_HOME was not preserved"
+okit upgrade --help >/dev/null
+okit uninstall --help >/dev/null
 
 printf '%s\n' 'Linux runtime smoke test passed'

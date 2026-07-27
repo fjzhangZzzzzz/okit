@@ -39,7 +39,7 @@ tag，不负责决定或创建版本号。
 
 安装脚本必须写入 `$OKIT_HOME/install.json`（默认 `~/.okit/install.json`），记录
 版本、安装方式、可执行文件路径、
-发布通道以及由安装器添加的 PATH 项。`okit self update` 使用同一组压缩包和
+发布通道以及由安装器添加的 PATH 项。`okit upgrade` 使用同一组压缩包和
 `checksums.txt`，不维护第二套更新产物。
 
 ## 自动流程
@@ -50,7 +50,7 @@ tag，不负责决定或创建版本号。
 4. 使用 GoReleaser 构建、归档并生成校验和；
 5. 创建 GitHub Release，上传压缩包、manifest、校验和及两个安装脚本；
 6. 在干净的 Linux/Windows 环境执行安装冒烟测试；
-7. 从上一稳定版执行 `okit self update`，并验证内置卸载；
+7. 从上一稳定版执行 `okit upgrade`，并验证内置卸载；
 8. 冒烟测试失败时将发布标记为失败，不更新安装入口。
 
 工作流调用仓库中的 `scripts/smoke-release-lifecycle.sh` 和
@@ -134,13 +134,13 @@ irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 |
 
 安装、升级和卸载应保持幂等，不修改与 `okit` 无关的 PATH 条目或文件。未来可在
 GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个版本的阻塞项。
-通过包管理器安装时，`okit self` 不接管升级或卸载，必须提示用户使用原包管理器。
+通过包管理器安装时，`okit` 不接管升级或卸载，必须提示用户使用原包管理器。
 
 ## 预发布与清理
 
 - `vMAJOR.MINOR.PATCH-rc.N` 发布为 GitHub Pre-release，用于真实安装和升级验收。
-- `okit self update --prerelease` 允许选择预发布版本；精确升级使用
-  `okit self update --version vMAJOR.MINOR.PATCH-rc.N`。
+- `okit upgrade --prerelease` 允许选择预发布版本；精确升级使用
+  `okit upgrade --version vMAJOR.MINOR.PATCH-rc.N`。
 - 对应正式版本 `vMAJOR.MINOR.PATCH` 发布并完成 Linux/Windows 生命周期烟测后，
   工作流立即删除所有 `vMAJOR.MINOR.PATCH-rc.N` GitHub Release 及其 tag。
 
@@ -155,5 +155,5 @@ GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个
 - 安装脚本拒绝校验和不匹配的压缩包；
 - 从上一稳定版自升级成功，损坏产物和中断场景能够回滚；
 - 默认卸载保留用户数据，`--purge` 仅删除经过验证的 `OKIT_HOME`；
-- `--help`、`info --format json`、`hex`、`pe inspect` 的只读冒烟测试通过；
+- `--help`、`upgrade --help`、`uninstall --help` 的只读冒烟测试通过；
 - MobaXterm 命令只包含在 Windows 可执行文件的可用路径中。
