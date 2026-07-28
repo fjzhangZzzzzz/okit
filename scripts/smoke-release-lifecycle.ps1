@@ -11,8 +11,8 @@ $ErrorActionPreference = 'Stop'
 function Write-Phase([string]$Message) { Write-Host "`n==> $Message" }
 function Fail([string]$Message) { throw $Message }
 
-if ($Version -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { Fail "invalid version: $Version" }
-if ($Mode -eq 'binary' -and -not $Binary) { Fail 'binary mode requires -Binary PATH' }
+if ($Version -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { Fail "版本号无效：$Version" }
+if ($Mode -eq 'binary' -and -not $Binary) { Fail 'binary 模式需要 -Binary PATH' }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $smokeRoot = $null
@@ -29,7 +29,7 @@ $env:OKIT_HOME = $okitHome
 $env:OKIT_INSTALL_DIR = $installDir
 
 function Stage-Binary {
-    if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) { Fail "binary does not exist: $Binary" }
+    if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) { Fail "二进制文件不存在：$Binary" }
     New-Item -ItemType Directory -Force -Path $installDir, $okitHome | Out-Null
     Copy-Item -LiteralPath $Binary -Destination $executable -Force
     $metadata = [ordered]@{
@@ -44,7 +44,7 @@ function Stage-Binary {
 }
 
 function Assert-Version {
-    Write-Phase 'Verify installed version'
+    Write-Phase '验证已安装版本'
     $actual = @()
     $exitCode = 1
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
@@ -55,65 +55,70 @@ function Assert-Version {
         }
         Start-Sleep -Milliseconds 250
     }
-    Write-Host "binary: $executable"
-    Write-Host "expected: okit $Version"
-    Write-Host "actual output:"
+    Write-Host "二进制：$executable"
+    Write-Host "期望：okit $Version"
+    Write-Host "实际输出："
     $actual | ForEach-Object { Write-Host $_ }
-    if ($exitCode -ne 0) { Fail "version command exited with status $exitCode" }
+    if ($exitCode -ne 0) { Fail "版本命令退出码为 $exitCode" }
     if (-not ((($actual -join "`n") -split "`r?`n") -contains "okit $Version")) {
-        Fail "installed version does not match tag $Version"
+        Fail "已安装版本与 tag $Version 不一致"
     }
 }
 
 try {
-    Write-Phase "Prepare $Mode smoke test for $Version"
+    Write-Phase "准备 $Version 的 $Mode 冒烟测试"
     if ($Mode -eq 'binary') {
         Stage-Binary
     }
     else {
-        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Fail 'gh is required for release mode' }
+        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Fail 'release 模式需要 gh' }
         $releases = gh api "repos/$Repository/releases" | ConvertFrom-Json
-        if ($LASTEXITCODE -ne 0) { Fail "could not list releases for $Repository" }
+        if ($LASTEXITCODE -ne 0) { Fail "无法列出 $Repository 的 Release" }
         $previous = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -ne $Version } | Select-Object -First 1
         if ($previous) {
-            Write-Phase "Install previous release $($previous.tag_name)"
+            Write-Phase "安装上一正式版本 $($previous.tag_name)"
             & (Join-Path $PSScriptRoot 'install.ps1') -Version $previous.tag_name
-            Write-Phase "Update $($previous.tag_name) to $Version"
+            $previousHelp = @(& $executable --help 2>&1) -join "`n"
+            if ($LASTEXITCODE -ne 0) { Fail "无法读取升级源 $($previous.tag_name) 的命令列表" }
+            if ($previousHelp -notmatch '(?m)^\s+upgrade\s') {
+                Fail "$($previous.tag_name) 不支持 upgrade 命令，不能作为 $Version 的升级源"
+            }
+            Write-Phase "从 $($previous.tag_name) 升级到 $Version"
             & $executable upgrade --version $Version
-	            if ($LASTEXITCODE -ne 0) { Fail '升级失败' }
+            if ($LASTEXITCODE -ne 0) { Fail '升级失败' }
         }
         else {
-            Write-Phase "Install first release $Version"
+            Write-Phase "安装首个版本 $Version"
             & (Join-Path $PSScriptRoot 'install.ps1') -Version $Version
         }
     }
 
     Assert-Version
 
-    Write-Phase 'Run installed binary runtime smoke'
+    Write-Phase '运行已安装二进制的运行时冒烟测试'
     & (Join-Path $PSScriptRoot 'smoke-runtime-windows.ps1') -Executable $executable -Version $Version
-    if ($LASTEXITCODE -ne 0) { Fail 'Windows runtime smoke failed' }
+    if ($LASTEXITCODE -ne 0) { Fail 'Windows 运行时冒烟测试失败' }
     & bash (Join-Path $PSScriptRoot 'smoke-runtime-windows-git-bash.sh') --executable $executable --version $Version
-    if ($LASTEXITCODE -ne 0) { Fail 'Windows Git Bash runtime smoke failed' }
+    if ($LASTEXITCODE -ne 0) { Fail 'Windows Git Bash 运行时冒烟测试失败' }
 
-    Write-Phase 'Run release lifecycle command checks'
+    Write-Phase '检查发布生命周期命令'
     & $executable upgrade --help
     if ($LASTEXITCODE -ne 0) { Fail '升级帮助冒烟检查失败' }
 
-    Write-Phase 'Verify uninstall preserves user data'
+    Write-Phase '验证默认卸载保留用户数据'
     New-Item -ItemType Directory -Force -Path $okitHome | Out-Null
     New-Item -ItemType File -Force -Path (Join-Path $okitHome 'user-data') | Out-Null
     & $executable uninstall --dry-run
-    if ($LASTEXITCODE -ne 0) { Fail 'uninstall dry-run failed' }
+    if ($LASTEXITCODE -ne 0) { Fail 'uninstall dry-run 失败' }
     & $executable uninstall
-    if ($LASTEXITCODE -ne 0) { Fail 'uninstall failed' }
+    if ($LASTEXITCODE -ne 0) { Fail 'uninstall 失败' }
     for ($attempt = 0; $attempt -lt 20 -and (Test-Path -LiteralPath $executable); $attempt++) {
         Start-Sleep -Milliseconds 250
     }
-    if (Test-Path -LiteralPath $executable) { Fail "executable was not uninstalled: $executable" }
-    if (-not (Test-Path -LiteralPath (Join-Path $okitHome 'user-data'))) { Fail 'default uninstall removed user data' }
+    if (Test-Path -LiteralPath $executable) { Fail "未卸载可执行文件：$executable" }
+    if (-not (Test-Path -LiteralPath (Join-Path $okitHome 'user-data'))) { Fail '默认卸载删除了用户数据' }
 
-    Write-Phase 'Release lifecycle smoke test passed'
+    Write-Phase '发布生命周期冒烟测试通过'
 }
 finally {
     if ($smokeRoot) { Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue }

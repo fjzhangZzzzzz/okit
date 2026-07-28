@@ -1,4 +1,4 @@
-name: Release
+name: 发布
 
 on:
   push:
@@ -8,7 +8,24 @@ permissions:
   contents: write
 
 jobs:
+  validate-release-candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: 验证正式版本对应的 RC
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          sh scripts/verify-release-candidate.sh
+          --version "${{ github.ref_name }}"
+          --repository "${{ github.repository }}"
+          --commit "${{ github.sha }}"
+
   release:
+    needs: validate-release-candidate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -18,12 +35,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Verify
+      - name: 验证
         run: |
           test -z "$(gofmt -l .)"
           go test ./...
           go vet ./...
-      - name: Generate release manifest
+      - name: 生成发布清单
         run: go run ./internal/releasemanifest/cmd/generate --version "${{ github.ref_name }}" --output .release/release-manifest.json
       - uses: goreleaser/goreleaser-action@v7
         with:
@@ -41,7 +58,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
-      - name: Linux release lifecycle smoke test
+      - name: Linux 发布生命周期冒烟测试
         env:
           OKIT_HOME: ${{ runner.temp }}/okit-home
           OKIT_INSTALL_DIR: ${{ runner.temp }}/okit-bin
@@ -55,7 +72,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
-      - name: Windows release lifecycle smoke test
+      - name: Windows 发布生命周期冒烟测试
         shell: pwsh
         env:
           OKIT_HOME: ${{ runner.temp }}\okit-home
@@ -63,11 +80,11 @@ jobs:
         run: scripts/smoke-release-lifecycle.ps1 -Mode release -Version $env:OKIT_VERSION -Repository "${{ github.repository }}"
 
   cleanup-release-candidates:
-    needs: [smoke-release-lifecycle-linux, smoke-release-lifecycle-windows]
+    needs: mark-release-validated
     if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Delete release candidates for the published version
+      - name: 删除正式版本对应的 RC
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FINAL_VERSION: ${{ github.ref_name }}
@@ -83,3 +100,21 @@ jobs:
                 ;;
             esac
           done
+
+  mark-release-validated:
+    needs: [smoke-release-lifecycle-linux, smoke-release-lifecycle-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 写入发布验证标记
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_RUN_ID: ${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            '{"version":"'"$RELEASE_VERSION"'","commit":"'"$RELEASE_COMMIT"'","run_id":"'"$RELEASE_RUN_ID"'","linux":true,"windows":true}' \
+            > release-validation.json
+          gh release upload "$RELEASE_VERSION" release-validation.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

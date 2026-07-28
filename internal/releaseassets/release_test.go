@@ -64,19 +64,19 @@ func TestGoReleaserBuildsDocumentedMatrixAndPublishesInstallers(t *testing.T) {
 
 func TestWorkflowsSeparateRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	releaseWorkflow := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate", "cleanup-release-candidates", "--cleanup-tag", "-rc."} {
+	for _, required := range []string{"validate-release-candidate", "verify-release-candidate.sh", "smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate", "mark-release-validated", "release-validation.json", "cleanup-release-candidates", "--cleanup-tag", "-rc."} {
 		if !strings.Contains(releaseWorkflow, required) {
-			t.Errorf("release workflow does not contain %q", required)
+			t.Errorf("发布工作流不包含 %q", required)
 		}
 	}
 	if !strings.Contains(repositoryFile(t, ".goreleaser.yaml"), "prerelease: auto") {
-		t.Error("GoReleaser must publish prerelease tags as GitHub prereleases")
+		t.Error("GoReleaser 必须把预发布 tag 发布为 GitHub Pre-release")
 	}
 	for _, file := range []string{"smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1"} {
 		smoke := repositoryFile(t, "scripts", file)
-		for _, required := range []string{"binary", "release", "upgrade", "uninstall", "smoke-runtime-", "--dry-run", "actual output"} {
+		for _, required := range []string{"binary", "release", "upgrade", "uninstall", "smoke-runtime-", "--dry-run", "实际输出"} {
 			if !strings.Contains(smoke, required) {
-				t.Errorf("%s does not contain %q", file, required)
+				t.Errorf("%s 不包含 %q", file, required)
 			}
 		}
 	}
@@ -84,12 +84,12 @@ func TestWorkflowsSeparateRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	ciWorkflow := repositoryFile(t, ".github", "workflows", "ci.yml")
 	for _, file := range []string{"smoke-runtime-linux.sh", "smoke-runtime-windows.ps1", "smoke-runtime-windows-git-bash.sh"} {
 		if !strings.Contains(ciWorkflow, file) {
-			t.Errorf("CI workflow does not call %s", file)
+			t.Errorf("CI 工作流没有调用 %s", file)
 		}
 		smoke := repositoryFile(t, "scripts", file)
 		for _, required := range []string{"--version", "--help", "upgrade", "uninstall"} {
 			if !strings.Contains(smoke, required) {
-				t.Errorf("%s does not contain %q", file, required)
+				t.Errorf("%s 不包含 %q", file, required)
 			}
 		}
 	}
