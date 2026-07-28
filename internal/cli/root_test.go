@@ -21,6 +21,50 @@ func TestRootHelpListsRetainedCommands(t *testing.T) {
 	}
 }
 
+func TestHelpUsesChineseCommonLabelsAndArgumentPlaceholders(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "root",
+			args: []string{"--help"},
+			want: []string{"用法:", "可用命令:", "选项:", "获取命令更多信息"},
+		},
+		{
+			name: "command with positional argument",
+			args: []string{"mobaxterm", "theme", "apply", "--help"},
+			want: []string{"用法:", "选项:", "全局选项:", "apply <名称>", "应用 MobaXterm 主题"},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := New("dev").Run(testCase.args, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+				t.Fatalf("args=%v code=%d stdout=%q stderr=%q", testCase.args, code, stdout.String(), stderr.String())
+			}
+			for _, want := range testCase.want {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("args=%v help lacks %q: %q", testCase.args, want, stdout.String())
+				}
+			}
+		})
+	}
+}
+
+func TestUsageErrorsUseChineseHumanGuidance(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := New("dev").Run([]string{"unknown"}, &stdout, &stderr)
+	if code != 2 || stdout.Len() != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{"未知命令", "请运行 `okit --help` 查看可用的位置参数和选项。"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("usage error lacks %q: %q", want, stderr.String())
+		}
+	}
+}
+
 func TestEveryRetainedCommandHasContextualHelp(t *testing.T) {
 	commands := [][]string{
 		{"mobaxterm"}, {"mobaxterm", "status"}, {"mobaxterm", "theme"},
@@ -39,7 +83,7 @@ func TestEveryRetainedCommandHasContextualHelp(t *testing.T) {
 			if code := New("dev").Run(args, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
 				t.Fatalf("args=%v code=%d stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
 			}
-			if !strings.Contains(stdout.String(), "Usage:") || !strings.Contains(stdout.String(), strings.Join(command, " ")) {
+			if !strings.Contains(stdout.String(), "用法:") || !strings.Contains(stdout.String(), strings.Join(command, " ")) {
 				t.Fatalf("args=%v help=%q", args, stdout.String())
 			}
 		})
