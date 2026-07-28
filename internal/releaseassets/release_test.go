@@ -64,7 +64,7 @@ func TestGoReleaserBuildsDocumentedMatrixAndPublishesInstallers(t *testing.T) {
 
 func TestWorkflowsSeparateRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	releaseWorkflow := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"validate-release-candidate", "verify-release-candidate.sh", "smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate", "mark-release-validated", "release-validation.json", "cleanup-release-candidates", "--cleanup-tag", "-rc."} {
+	for _, required := range []string{"validate-release-candidate", "verify-release-candidate.sh", "GORELEASER_CURRENT_TAG", "github.ref_name", "smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate", "mark-release-validated", "release-validation.json", "cleanup-release-candidates", "--cleanup-tag", "-rc."} {
 		if !strings.Contains(releaseWorkflow, required) {
 			t.Errorf("发布工作流不包含 %q", required)
 		}

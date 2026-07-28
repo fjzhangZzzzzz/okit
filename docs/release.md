@@ -151,6 +151,8 @@ GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个
   `release-validation.json`；没有该标记的 RC 不得用于正式发布。
 - 正式版本必须与已验证的同版本 RC 指向同一提交。RC 资产不能直接改名为正式资产，
   因为二进制版本、manifest 和文件名均包含 tag；正式版本必须从同一提交重新构建。
+- RC 与正式 tag 指向同一提交时，工作流必须通过 `GORELEASER_CURRENT_TAG` 显式传入
+  当前触发 tag，不能依赖 GoReleaser 对同一提交多个 tag 的默认排序。
 - 对应正式版本 `vMAJOR.MINOR.PATCH` 发布并完成 Linux/Windows 生命周期烟测后，
   工作流立即删除所有 `vMAJOR.MINOR.PATCH-rc.N` GitHub Release 及其 tag。
 
