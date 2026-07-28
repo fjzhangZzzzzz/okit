@@ -29,6 +29,7 @@ irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1 |
 ```
 
 安装后可使用 `okit upgrade --version v1.2.3` 升级指定版本，或使用 `okit upgrade --prerelease` 选择预发布版本。
+`upgrade` 从 v2.2.2 起作为唯一升级命令；v2.2.1 及更早版本需要使用上述安装入口重新安装，不提供旧命令兼容或跨越中间版本的升级路径。
 
 ## 文档
 

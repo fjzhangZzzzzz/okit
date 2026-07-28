@@ -8,6 +8,7 @@ tag，不负责决定或创建版本号。
 - 遵循语义化版本，tag 格式为 `vMAJOR.MINOR.PATCH`。
 - 预发布使用 `vMAJOR.MINOR.PATCH-rc.N`。
 - tag 必须指向已通过 Linux/Windows CI 的提交。
+- 正式版本 tag 必须与一个已通过发布冒烟的同版本 RC tag 指向同一提交。
 - 正式发布使用 GitHub Release，不再发布到 PyPI。
 
 ## 发布产物
@@ -44,19 +45,25 @@ tag，不负责决定或创建版本号。
 
 ## 自动流程
 
-1. 检出完整 Git 历史和 tag；
+1. 为待发布提交创建 RC tag；
 2. 运行格式化检查、静态检查和 `go test ./...`；
-3. 根据 tag 生成并校验 `release-manifest.json`；
-4. 使用 GoReleaser 构建、归档并生成校验和；
-5. 创建 GitHub Release，上传压缩包、manifest、校验和及两个安装脚本；
-6. 在干净的 Linux/Windows 环境执行安装冒烟测试；
-7. 从上一稳定版执行 `okit upgrade`，并验证内置卸载；
-8. 冒烟测试失败时将发布标记为失败，不更新安装入口。
+3. 根据 RC tag 生成并校验 `release-manifest.json`；
+4. 使用 GoReleaser 构建 RC、归档并生成校验和；
+5. 在干净的 Linux/Windows 环境从上一稳定版执行 `okit upgrade`，并验证安装和卸载；
+6. 两个平台均通过后，为 RC 上传 `release-validation.json` 验证标记；
+7. 在同一提交创建正式版本 tag；工作流确认对应 RC、提交和验证标记后才允许发布；
+8. 为正式 tag 重新构建带正式版本号的产物并再次执行 Linux/Windows 生命周期冒烟；
+9. 正式版本通过后，清理同版本 RC 的 Release 和 tag。
 
 工作流调用仓库中的 `scripts/smoke-release-lifecycle.sh` 和
 `scripts/smoke-release-lifecycle.ps1`，避免 Linux 与 Windows 的生命周期校验逻辑只存在于工作流内。
 它们复用 `smoke-runtime-*` 脚本验证最终安装产物；普通 CI 也使用相同脚本验证源码构建产物。
 冒烟失败必须显示测试阶段、二进制路径、期望版本和 `okit --version` 的实际输出。
+
+生命周期冒烟只使用最新命令 `okit upgrade`，不回退到已删除的 `okit self update`。
+升级源的顶层命令列表不包含 `upgrade` 时，脚本必须在执行升级前明确失败。`v2.2.2`
+是新生命周期命令的起始版本：`v2.2.1` 及更早版本不能作为升级源，用户必须重新安装；
+`v2.2.3` 是首个验证 `v2.2.2 -> v2.2.3` 升级链路的正式版本。
 
 运行时冒烟不执行安装、升级或卸载，可直接验证本地构建：
 
@@ -140,6 +147,10 @@ GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个
 - `vMAJOR.MINOR.PATCH-rc.N` 发布为 GitHub Pre-release，用于真实安装和升级验收。
 - `okit upgrade --prerelease` 允许选择预发布版本；精确升级使用
   `okit upgrade --version vMAJOR.MINOR.PATCH-rc.N`。
+- RC 只有在 Linux 和 Windows 生命周期冒烟均通过后才会获得
+  `release-validation.json`；没有该标记的 RC 不得用于正式发布。
+- 正式版本必须与已验证的同版本 RC 指向同一提交。RC 资产不能直接改名为正式资产，
+  因为二进制版本、manifest 和文件名均包含 tag；正式版本必须从同一提交重新构建。
 - 对应正式版本 `vMAJOR.MINOR.PATCH` 发布并完成 Linux/Windows 生命周期烟测后，
   工作流立即删除所有 `vMAJOR.MINOR.PATCH-rc.N` GitHub Release 及其 tag。
 
