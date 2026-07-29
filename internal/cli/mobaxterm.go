@@ -18,14 +18,14 @@ import (
 )
 
 func newMobaXtermCommand(global *globalOptions) *cobra.Command {
-	command := commandGroup("mobaxterm", "Manage MobaXterm")
+	command := commandGroup("mobaxterm", "管理 MobaXterm")
 	command.AddCommand(newMobaStatusCommand(global), newMobaThemeCommand(global), newMobaLicenseCommand(global))
 	return command
 }
 
 func mobaContext() (mobaxterm.Service, string, error) {
 	if runtime.GOOS != "windows" {
-		return mobaxterm.Service{}, "", usageError("MobaXterm is only supported on Windows")
+		return mobaxterm.Service{}, "", usageError("MobaXterm 仅支持 Windows")
 	}
 	home, err := config.Home()
 	if err != nil {
@@ -37,7 +37,7 @@ func mobaContext() (mobaxterm.Service, string, error) {
 func newMobaStatusCommand(global *globalOptions) *cobra.Command {
 	return &cobra.Command{
 		Use:         "status",
-		Short:       "Display detected MobaXterm installations",
+		Short:       "显示已检测到的 MobaXterm 安装",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -66,7 +66,7 @@ func newMobaStatusCommand(global *globalOptions) *cobra.Command {
 }
 
 func newMobaThemeCommand(global *globalOptions) *cobra.Command {
-	command := commandGroup("theme", "Manage MobaXterm terminal themes")
+	command := commandGroup("theme", "管理 MobaXterm 终端主题")
 	command.AddCommand(newMobaThemeListCommand(global), newMobaThemeApplyCommand(global), newMobaThemeRestoreCommand(global), newMobaThemeCacheCommand(global))
 	return command
 }
@@ -75,7 +75,7 @@ func newMobaThemeListCommand(global *globalOptions) *cobra.Command {
 	search, limit := "", 20
 	command := &cobra.Command{
 		Use:         "list",
-		Short:       "List cached MobaXterm themes",
+		Short:       "列出已缓存的 MobaXterm 主题",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -84,7 +84,7 @@ func newMobaThemeListCommand(global *globalOptions) *cobra.Command {
 				return err
 			}
 			if limit < 1 {
-				return usageError("--limit must be greater than zero")
+				return usageError("--limit 必须大于零")
 			}
 			schemes, err := theme.List(mobaThemeCache(home), search, limit)
 			if err != nil {
@@ -113,16 +113,16 @@ func newMobaThemeListCommand(global *globalOptions) *cobra.Command {
 			return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: schemes})
 		},
 	}
-	command.Flags().StringVar(&search, "search", "", "filter themes by name")
-	command.Flags().IntVar(&limit, "limit", 20, "maximum number of themes")
+	command.Flags().StringVar(&search, "search", "", "按名称筛选主题")
+	command.Flags().IntVar(&limit, "limit", 20, "主题数量上限")
 	return command
 }
 
 func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 	var noBackup, force, dryRun bool
 	command := &cobra.Command{
-		Use:         "apply <name>",
-		Short:       "Apply a MobaXterm theme",
+		Use:         "apply <名称>",
+		Short:       "应用 MobaXterm 主题",
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -165,9 +165,9 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().BoolVar(&noBackup, "no-backup", false, "do not create a configuration backup")
-	command.Flags().BoolVar(&force, "force", false, "skip interactive confirmation")
-	command.Flags().BoolVar(&dryRun, "dry-run", false, "show the plan without changing files")
+	command.Flags().BoolVar(&noBackup, "no-backup", false, "不创建配置备份")
+	command.Flags().BoolVar(&force, "force", false, "跳过交互确认")
+	command.Flags().BoolVar(&dryRun, "dry-run", false, "显示计划但不修改文件")
 	return command
 }
 
@@ -176,7 +176,7 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 	var force, dryRun bool
 	command := &cobra.Command{
 		Use:         "restore",
-		Short:       "Restore a MobaXterm configuration backup",
+		Short:       "还原 MobaXterm 配置备份",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -214,18 +214,18 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().StringVar(&backup, "backup", "", "backup file to restore (defaults to latest)")
-	command.Flags().BoolVar(&force, "force", false, "skip interactive confirmation")
-	command.Flags().BoolVar(&dryRun, "dry-run", false, "show the plan without changing files")
+	command.Flags().StringVar(&backup, "backup", "", "要还原的备份文件（默认为最新备份）")
+	command.Flags().BoolVar(&force, "force", false, "跳过交互确认")
+	command.Flags().BoolVar(&dryRun, "dry-run", false, "显示计划但不修改文件")
 	return command
 }
 
 func newMobaThemeCacheCommand(global *globalOptions) *cobra.Command {
-	command := commandGroup("cache", "Manage the local theme cache")
+	command := commandGroup("cache", "管理本地主题缓存")
 	command.AddCommand(
-		newMobaThemeCacheAction("update", "Update the local theme cache", global),
-		newMobaThemeCacheAction("clean", "Remove the local theme cache", global),
-		newMobaThemeCacheAction("status", "Display local theme cache status", global),
+		newMobaThemeCacheAction("update", "更新本地主题缓存", global),
+		newMobaThemeCacheAction("clean", "删除本地主题缓存", global),
+		newMobaThemeCacheAction("status", "显示本地主题缓存状态", global),
 	)
 	return command
 }
@@ -281,7 +281,7 @@ func mobaThemeCache(home string) string   { return filepath.Join(home, "cache", 
 func mobaThemeBackups(home string) string { return filepath.Join(home, "backups", "mobaxterm") }
 
 func newMobaLicenseCommand(global *globalOptions) *cobra.Command {
-	command := commandGroup("license", "Manage MobaXterm Pro licenses")
+	command := commandGroup("license", "管理 MobaXterm Pro 许可证")
 	command.AddCommand(newMobaLicenseGenerateCommand(global), newMobaLicenseDeployCommand(global), newMobaLicenseInspectCommand(global), newMobaLicenseVerifyCommand(global))
 	return command
 }
@@ -290,7 +290,7 @@ func newMobaLicenseGenerateCommand(global *globalOptions) *cobra.Command {
 	username, version, output := "", "", ""
 	command := &cobra.Command{
 		Use:         "generate",
-		Short:       "Generate a MobaXterm license file",
+		Short:       "生成 MobaXterm 许可证文件",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -298,7 +298,7 @@ func newMobaLicenseGenerateCommand(global *globalOptions) *cobra.Command {
 				return err
 			}
 			if username == "" || version == "" || output == "" {
-				return usageError("generate requires --username, --version, and --output")
+				return usageError("generate 需要 --username、--version 和 --output")
 			}
 			key, err := license.Generate(username, version)
 			if err != nil {
@@ -313,9 +313,9 @@ func newMobaLicenseGenerateCommand(global *globalOptions) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().StringVar(&username, "username", "", "licensed username")
-	command.Flags().StringVar(&version, "version", "", "MobaXterm version")
-	command.Flags().StringVar(&output, "output", "", "output license file")
+	command.Flags().StringVar(&username, "username", "", "授权用户名")
+	command.Flags().StringVar(&version, "version", "", "MobaXterm 版本")
+	command.Flags().StringVar(&output, "output", "", "输出许可证文件")
 	return command
 }
 
@@ -324,7 +324,7 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 	var force, dryRun bool
 	command := &cobra.Command{
 		Use:         "deploy",
-		Short:       "Deploy a MobaXterm license",
+		Short:       "部署 MobaXterm 许可证",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -333,7 +333,7 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 				return err
 			}
 			if username == "" {
-				return usageError("deploy requires --username")
+				return usageError("deploy 需要 --username")
 			}
 			presenter := newPresenter(cmd, global)
 			if !dryRun {
@@ -361,16 +361,16 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().StringVar(&username, "username", "", "licensed username")
-	command.Flags().StringVar(&version, "version", "", "MobaXterm version")
-	command.Flags().BoolVar(&force, "force", false, "skip interactive confirmation")
-	command.Flags().BoolVar(&dryRun, "dry-run", false, "show the deployment plan without changing files")
+	command.Flags().StringVar(&username, "username", "", "授权用户名")
+	command.Flags().StringVar(&version, "version", "", "MobaXterm 版本")
+	command.Flags().BoolVar(&force, "force", false, "跳过交互确认")
+	command.Flags().BoolVar(&dryRun, "dry-run", false, "显示部署计划但不修改文件")
 	return command
 }
 
 func newMobaLicenseInspectCommand(global *globalOptions) *cobra.Command {
 	return &cobra.Command{
-		Use: "inspect <file-or-key>", Short: "Inspect a MobaXterm license", Args: cobra.ExactArgs(1), Annotations: map[string]string{"formats": "table,json"},
+		Use: "inspect <文件或密钥>", Short: "检查 MobaXterm 许可证", Args: cobra.ExactArgs(1), Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, _, err := mobaContext(); err != nil {
 				return err
@@ -397,13 +397,13 @@ func newMobaLicenseInspectCommand(global *globalOptions) *cobra.Command {
 func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 	username, version := "", ""
 	command := &cobra.Command{
-		Use: "verify <file-or-key>", Short: "Verify a MobaXterm license", Args: cobra.ExactArgs(1), Annotations: map[string]string{"formats": "table,json"},
+		Use: "verify <文件或密钥>", Short: "验证 MobaXterm 许可证", Args: cobra.ExactArgs(1), Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, _, err := mobaContext(); err != nil {
 				return err
 			}
 			if username == "" || version == "" {
-				return usageError("verify requires --username and --version")
+				return usageError("verify 需要 --username 和 --version")
 			}
 			key, err := readLicenseArgument(args[0])
 			if err != nil {
@@ -422,8 +422,8 @@ func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().StringVar(&username, "username", "", "expected licensed username")
-	command.Flags().StringVar(&version, "version", "", "expected MobaXterm version")
+	command.Flags().StringVar(&username, "username", "", "预期的授权用户名")
+	command.Flags().StringVar(&version, "version", "", "预期的 MobaXterm 版本")
 	return command
 }
 

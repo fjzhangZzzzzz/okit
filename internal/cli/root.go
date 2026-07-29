@@ -28,6 +28,27 @@ const (
 	BuildModeRelease     = "release"
 )
 
+const chineseHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+
+{{end}}用法:
+  {{.UseLine}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if .HasAvailableSubCommands}}
+
+可用命令:{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+选项:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+全局选项:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+其他帮助主题:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+使用 "{{.CommandPath}} [command] --help" 获取命令更多信息。{{end}}
+`
+
 func New(version string) *App {
 	return &App{version: version, buildMode: inferBuildMode(version), stdin: os.Stdin}
 }
@@ -78,19 +99,7 @@ func (e *exitError) Error() string {
 
 func usageError(format string, args ...any) error {
 	message := fmt.Sprintf(format, args...)
-	if strings.HasPrefix(message, "--") {
-		message = "The " + message
-	} else {
-		message = upperFirstASCII(message)
-	}
-	return commandError(2, "CLI_USAGE", message, "Review this command's help and try again.")
-}
-
-func upperFirstASCII(value string) string {
-	if value == "" || value[0] < 'a' || value[0] > 'z' {
-		return value
-	}
-	return string(value[0]-('a'-'A')) + value[1:]
+	return commandError(2, "CLI_USAGE", message, "请查看此命令的帮助后重试。")
 }
 
 func runError(err error) error {
@@ -149,20 +158,20 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 
 func cobraUsageDiagnostic(err error, commandPath string) clioutput.Diagnostic {
 	raw := err.Error()
-	message := "This command couldn't be used as written."
+	message := "此命令的用法不正确。"
 	switch {
 	case strings.HasPrefix(raw, "unknown command "):
 		message = strings.Replace(raw, "unknown command", "未知命令", 1)
 	case strings.HasPrefix(raw, "unknown flag: "):
-		message = strings.Replace(raw, "unknown flag:", "Unknown option", 1)
+		message = strings.Replace(raw, "unknown flag:", "未知选项", 1)
 	case strings.Contains(raw, "unknown shorthand flag"):
-		message = strings.Replace(raw, "unknown shorthand flag", "Unknown short option", 1)
+		message = strings.Replace(raw, "unknown shorthand flag", "未知短选项", 1)
 	case (strings.Contains(raw, "accepts ") || strings.Contains(raw, "requires at least")) && strings.Contains(raw, "received 0"):
-		message = "This command is missing a required argument."
+		message = "此命令缺少必需的位置参数。"
 	case strings.Contains(raw, "accepts ") && strings.Contains(raw, "received"):
-		message = "This command received the wrong number of arguments."
+		message = "此命令的位置参数数量不正确。"
 	case strings.Contains(raw, "required flag") && strings.Contains(raw, "not set"):
-		message = "This command is missing a required option."
+		message = "此命令缺少必需的选项。"
 	}
 	return clioutput.Diagnostic{
 		Code: "CLI_USAGE", Message: message, Action: commandHelpAction(commandPath),
@@ -171,7 +180,7 @@ func cobraUsageDiagnostic(err error, commandPath string) clioutput.Diagnostic {
 }
 
 func commandHelpAction(commandPath string) string {
-	return "Run `" + commandPath + " --help` to review the available arguments and options."
+	return "请运行 `" + commandPath + " --help` 查看可用的位置参数和选项。"
 }
 
 func runtimeDiagnostic(err error) clioutput.Diagnostic {
@@ -214,20 +223,22 @@ func (a *App) newRootCommandWithOptions(options *globalOptions) *cobra.Command {
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if options.quiet && options.verbose {
-				return usageError("--quiet and --verbose are mutually exclusive")
+				return usageError("不能同时使用 --quiet 与 --verbose")
 			}
 			if !containsString([]string{"table", "json", "jsonl", "csv", "raw"}, options.format) {
-				return usageError("unsupported format %q", options.format)
+				return usageError("不支持输出格式 %q", options.format)
 			}
 			allowed := commandFormats(cmd)
 			if !containsString(allowed, options.format) {
-				return usageError("--format %s is not supported by this command", options.format)
+				return usageError("此命令不支持 --format %s", options.format)
 			}
 			newPresenter(cmd, options).Verbose("executing command", clioutput.Field{Label: "command", Value: cmd.CommandPath()})
 			return nil
 		},
 	}
 	root.SetVersionTemplate(a.versionOutput())
+	root.SetHelpTemplate(chineseHelpTemplate)
+	root.SetHelpCommand(&cobra.Command{Use: "help [命令]", Short: "显示任意命令的帮助"})
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentFlags().StringVar(&options.format, "format", "table", "输出格式（按命令支持情况而定）")
 	root.PersistentFlags().BoolVar(&options.noColor, "no-color", false, "禁用 ANSI 颜色")
@@ -235,6 +246,15 @@ func (a *App) newRootCommandWithOptions(options *globalOptions) *cobra.Command {
 	root.PersistentFlags().BoolVar(&options.verbose, "verbose", false, "显示额外诊断上下文")
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		if helpFlag := cmd.Flags().Lookup("help"); helpFlag != nil {
+			helpFlag.Usage = "显示此命令的帮助"
+		}
+		if cmd == root {
+			versionFlag := cmd.Flags().Lookup("version")
+			if versionFlag != nil {
+				versionFlag.Usage = "显示版本信息"
+			}
+		}
 		formatFlag := root.PersistentFlags().Lookup("format")
 		originalUsage := formatFlag.Usage
 		formatFlag.Usage = "输出格式：" + strings.Join(commandFormats(cmd), ", ")
@@ -249,7 +269,7 @@ func (a *App) newRootCommandWithOptions(options *globalOptions) *cobra.Command {
 	)
 	root.AddCommand(&cobra.Command{
 		Use:    "version",
-		Short:  "Display version information",
+		Short:  "显示版本信息",
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
