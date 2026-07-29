@@ -188,13 +188,13 @@ func runtimeDiagnostic(err error) clioutput.Diagnostic {
 	switch {
 	case strings.Contains(message, "MobaXterm installation was not found"):
 		return clioutput.Diagnostic{
-			Code: "MOBA_INSTALLATION_NOT_FOUND", Message: "MobaXterm installation was not found",
-			Action: "Run `okit mobaxterm status` to inspect detected installations.",
+			Code: "MOBA_INSTALLATION_NOT_FOUND", Message: "未找到 MobaXterm 安装。",
+			Action: "请运行 `okit mobaxterm status` 查看已检测到的安装。",
 		}
 	default:
 		return clioutput.Diagnostic{
-			Code: "CLI_RUNTIME", Message: "The command couldn't be completed.",
-			Action: "Re-run with --verbose for the underlying diagnostic context.",
+			Code: "CLI_RUNTIME", Message: "命令未能完成。",
+			Action: "请使用 --verbose 重新运行以查看带标签的技术详情。",
 		}
 	}
 }

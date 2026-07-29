@@ -3,9 +3,11 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/fjzhangZzzzzz/okit/internal/mobaxterm"
 	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
 	"github.com/spf13/cobra"
 )
@@ -69,6 +71,91 @@ func TestHelpShowsOnlyCommandFormats(t *testing.T) {
 	if !strings.Contains(stdout.String(), "输出格式：table, json") || strings.Contains(stdout.String(), "table, json, csv") {
 		t.Fatalf("help formats are not command-specific: %q", stdout.String())
 	}
+}
+
+func TestRuntimeDiagnosticsUseChineseConclusionAndAction(t *testing.T) {
+	for _, err := range []error{
+		fmt.Errorf("MobaXterm installation was not found"),
+		fmt.Errorf("unexpected failure"),
+	} {
+		diagnostic := runtimeDiagnostic(err)
+		if !containsChinese(diagnostic.Message) || !containsChinese(diagnostic.Action) {
+			t.Fatalf("diagnostic is not fully Chinese: %+v", diagnostic)
+		}
+	}
+}
+
+func TestMobaXtermStatusDocumentsCoverChineseEmptyAndResultStates(t *testing.T) {
+	empty := mobaStatusDocument(nil)
+	if empty.Title != "" || empty.Empty == nil || empty.Empty.Message != "未找到 MobaXterm 安装。" {
+		t.Fatalf("empty document=%+v", empty)
+	}
+	result := mobaStatusDocument([]mobaxterm.Candidate{{Default: true, Version: "25.0", Source: "测试来源", ExePath: "C:/MobaXterm.exe", ConfigPath: "C:/MobaXterm.ini"}})
+	if result.Title != "已检测到的 MobaXterm 安装" || result.Table == nil || strings.Join(result.Table.Headers, ",") != "默认,版本,来源,可执行文件,配置文件" {
+		t.Fatalf("result document=%+v", result)
+	}
+}
+
+func TestMobaXtermConfirmationPromptsUseChinese(t *testing.T) {
+	for _, prompt := range []string{mobaThemeApplyPrompt(), mobaThemeRestorePrompt(), mobaLicenseDeployPrompt("would deploy license to C:/Custom.mxtpro")} {
+		if !containsChinese(prompt) || strings.Contains(prompt, "Apply") || strings.Contains(prompt, "Restore") || strings.Contains(prompt, "Deploy") {
+			t.Fatalf("confirmation prompt is not Chinese: %q", prompt)
+		}
+	}
+}
+
+func TestMobaXtermLicenseDeploymentSummaryTranslatesHumanOutput(t *testing.T) {
+	for raw, want := range map[string]string{
+		"would deploy license to C:/Custom.mxtpro": "将把许可证部署到 C:/Custom.mxtpro",
+		"deployed license to C:/Custom.mxtpro":     "已将许可证部署到 C:/Custom.mxtpro",
+	} {
+		if got := mobaLicenseDeploymentSummary(raw); got != want {
+			t.Fatalf("raw=%q got=%q want=%q", raw, got, want)
+		}
+	}
+}
+
+func TestSelfUpdateFallbackTitleIsChinese(t *testing.T) {
+	app := New("v1.0.0")
+	app.selfUpdater = &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0"}}
+	var stdout, stderr bytes.Buffer
+	if code := app.Run([]string{"upgrade"}, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !containsChinese(stdout.String()) || strings.Contains(stdout.String(), "Update selected") {
+		t.Fatalf("fallback title is not Chinese: %q", stdout.String())
+	}
+}
+
+func TestSelfUpdateDryRunUsesChinesePlanAndPreservesMachinePlan(t *testing.T) {
+	app := New("v1.0.0")
+	app.selfUpdater = &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}}
+	var stdout, stderr bytes.Buffer
+	if code := app.Run([]string{"upgrade", "--dry-run"}, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "将从 v1.0.0 更新到 v1.1.0。") || strings.Contains(stdout.String(), "would update") {
+		t.Fatalf("dry-run plan is not localized: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.Run([]string{"--format", "json", "upgrade", "--dry-run"}, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+		t.Fatalf("json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var machine map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &machine); err != nil || machine["plan"] != "would update v1.0.0 to v1.1.0" {
+		t.Fatalf("machine=%v err=%v", machine, err)
+	}
+}
+
+func containsChinese(value string) bool {
+	for _, character := range value {
+		if character >= '\u4e00' && character <= '\u9fff' {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {

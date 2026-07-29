@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
+	"github.com/spf13/cobra"
 )
 
 func TestRootHelpListsRetainedCommands(t *testing.T) {
@@ -90,6 +91,41 @@ func TestEveryRetainedCommandHasContextualHelp(t *testing.T) {
 	}
 }
 
+func TestPublicCommandHelpUsesChineseLabelsAndDescriptions(t *testing.T) {
+	root := New("dev").newRootCommand()
+	var verify func(*cobra.Command)
+	verify = func(command *cobra.Command) {
+		if command.Hidden || command.Name() == "help" {
+			return
+		}
+		var stdout, stderr bytes.Buffer
+		args := append(commandPathArguments(command), "--help")
+		if code := New("dev").Run(args, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+			t.Fatalf("args=%v code=%d stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "用法:") || !containsChinese(command.Short) {
+			t.Errorf("args=%v help or description is not Chinese: %q", args, stdout.String())
+		}
+		for _, english := range []string{"Usage:", "Available Commands:", "Flags:", "Global Flags:", "help for"} {
+			if strings.Contains(stdout.String(), english) {
+				t.Errorf("args=%v help contains untranslated text %q: %q", args, english, stdout.String())
+			}
+		}
+		for _, child := range command.Commands() {
+			verify(child)
+		}
+	}
+	verify(root)
+}
+
+func commandPathArguments(command *cobra.Command) []string {
+	path := strings.Fields(command.CommandPath())
+	if len(path) > 0 && path[0] == "okit" {
+		return path[1:]
+	}
+	return path
+}
+
 func TestRemovedTopLevelCommandsAreUsageErrors(t *testing.T) {
 	for _, command := range []string{"info", "hex", "pe", "git-sync", "shell", "self", "config"} {
 		var stdout, stderr bytes.Buffer
@@ -117,7 +153,7 @@ func TestUninstallRetainsSafetyOptions(t *testing.T) {
 	app.selfUninstaller = uninstaller
 	var stdout, stderr bytes.Buffer
 	code := app.Run([]string{"uninstall", "--purge", "--yes", "--dry-run"}, &stdout, &stderr)
-	if code != 0 || !uninstaller.options.Purge || !uninstaller.options.Yes || !uninstaller.options.DryRun {
+	if code != 0 || !uninstaller.options.Purge || !uninstaller.options.Yes || !uninstaller.options.DryRun || !strings.Contains(stdout.String(), "卸载计划") || !strings.Contains(stdout.String(), "未作任何更改") {
 		t.Fatalf("code=%d options=%+v stdout=%q stderr=%q", code, uninstaller.options, stdout.String(), stderr.String())
 	}
 }
@@ -129,7 +165,7 @@ func TestUninstallPurgeRequiresConfirmation(t *testing.T) {
 	app.stdin = strings.NewReader("y\n")
 	var stdout, stderr bytes.Buffer
 	code := app.Run([]string{"uninstall", "--purge"}, &stdout, &stderr)
-	if code != 0 || !uninstaller.options.Yes || !strings.Contains(stderr.String(), "永久删除") {
+	if code != 0 || !uninstaller.options.Yes || !strings.Contains(stderr.String(), "永久删除") || !strings.Contains(stdout.String(), "已成功卸载") {
 		t.Fatalf("code=%d options=%+v stdout=%q stderr=%q", code, uninstaller.options, stdout.String(), stderr.String())
 	}
 }
