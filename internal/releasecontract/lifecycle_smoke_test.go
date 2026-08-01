@@ -1,4 +1,4 @@
-package releaseflow
+package releasecontract
 
 import (
 	"fmt"

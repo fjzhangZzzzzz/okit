@@ -7,13 +7,6 @@ import (
 	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 )
 
-func boolText(value bool) string {
-	if value {
-		return "是"
-	}
-	return "否"
-}
-
 func confirmAction(stdin interface{ Read([]byte) (int, error) }, presenter *clioutput.Presenter, prompt string) bool {
 	if err := presenter.Prompt(prompt + " [y/N] "); err != nil {
 		return false

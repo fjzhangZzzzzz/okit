@@ -1,6 +1,6 @@
 //go:build windows
 
-package selfmanage
+package installation
 
 import (
 	"os"

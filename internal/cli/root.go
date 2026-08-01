@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fjzhangZzzzzz/okit/internal/installation"
 	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
-	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
 	"github.com/spf13/cobra"
 )
 
@@ -70,18 +70,18 @@ func NewBuildMode(version, commit, date, buildMode string) *App {
 }
 
 func inferBuildMode(version string) string {
-	if selfmanage.ValidateVersion(version) == nil {
+	if installation.ValidateVersion(version) == nil {
 		return BuildModeRelease
 	}
 	return BuildModeDevelopment
 }
 
 type upgradeRunner interface {
-	Run(context.Context, selfmanage.Intent, selfmanage.ProgressReporter) (selfmanage.Result, error)
+	Run(context.Context, installation.Intent, installation.ProgressReporter) (installation.Result, error)
 }
 
 type selfUninstaller interface {
-	Uninstall(selfmanage.UninstallOptions) (selfmanage.UninstallResult, error)
+	Uninstall(installation.UninstallOptions) (installation.UninstallResult, error)
 }
 
 type exitError struct {

@@ -1,4 +1,4 @@
-package selfmanage
+package installation
 
 import (
 	"archive/tar"

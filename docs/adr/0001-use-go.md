@@ -7,4 +7,4 @@
 
 Go 适合无运行时依赖的 CLI 分发、Linux/Windows 交叉构建和 GoReleaser 发布。实现遵循文档先行与 TDD，平台相关代码使用 build tags 隔离。
 
-目标结构保留 `cli`、`mobaxterm`、`selfmanage`、`config`、`output` 和发布验证模块；除非以后明确提供公共 Go API，否则不建立 `pkg/`。外部进程、文件系统和注册表接口由使用方包定义，避免形成通用 `utils` 包。
+目标结构保留 `cli`、`mobaxterm`、`installation`、`config`、`output` 和发布契约验证模块；其中 `installation` 表达自身安装生命周期，涵盖升级、卸载、安装元数据与平台替换。除非以后明确提供公共 Go API，否则不建立 `pkg/`。外部进程、文件系统和注册表接口由使用方包定义，避免形成通用 `utils` 包。

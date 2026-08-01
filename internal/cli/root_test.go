@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
+	"github.com/fjzhangZzzzzz/okit/internal/installation"
 	"github.com/spf13/cobra"
 )
 
@@ -142,7 +142,7 @@ func TestUpgradeParsesDocumentedOptions(t *testing.T) {
 	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer
 	code := app.Run([]string{"upgrade", "--check", "--version", "v1.1.0", "--prerelease", "--dry-run"}, &stdout, &stderr)
-	if code != 0 || runner.intent.Mode != selfmanage.ModeDryRun || !runner.intent.IncludePrerelease || runner.intent.Version != "v1.1.0" {
+	if code != 0 || runner.intent.Mode != installation.ModeDryRun || !runner.intent.IncludePrerelease || runner.intent.Version != "v1.1.0" {
 		t.Fatalf("code=%d intent=%+v stdout=%q stderr=%q", code, runner.intent, stdout.String(), stderr.String())
 	}
 }
@@ -179,21 +179,21 @@ func TestVersion(t *testing.T) {
 }
 
 type fakeUpgradeRunner struct {
-	intent selfmanage.Intent
-	result selfmanage.Result
+	intent installation.Intent
+	result installation.Result
 }
 
-func (f *fakeUpgradeRunner) Run(_ context.Context, intent selfmanage.Intent, _ selfmanage.ProgressReporter) (selfmanage.Result, error) {
+func (f *fakeUpgradeRunner) Run(_ context.Context, intent installation.Intent, _ installation.ProgressReporter) (installation.Result, error) {
 	f.intent = intent
 	if f.result.Available != "" {
 		return f.result, nil
 	}
-	return selfmanage.Result{Status: selfmanage.StatusAvailable, Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}, nil
+	return installation.Result{Status: installation.StatusAvailable, Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}, nil
 }
 
-type fakeSelfUninstaller struct{ options selfmanage.UninstallOptions }
+type fakeSelfUninstaller struct{ options installation.UninstallOptions }
 
-func (f *fakeSelfUninstaller) Uninstall(options selfmanage.UninstallOptions) (selfmanage.UninstallResult, error) {
+func (f *fakeSelfUninstaller) Uninstall(options installation.UninstallOptions) (installation.UninstallResult, error) {
 	f.options = options
-	return selfmanage.UninstallResult{Plan: []string{"okit", "install.json"}}, nil
+	return installation.UninstallResult{Plan: []string{"okit", "install.json"}}, nil
 }

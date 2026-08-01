@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/fjzhangZzzzzz/okit/internal/config"
+	"github.com/fjzhangZzzzzz/okit/internal/installation"
 	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
-	"github.com/fjzhangZzzzzz/okit/internal/selfmanage"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
@@ -46,7 +46,7 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 					},
 				})
 			}
-			if err := selfmanage.ValidateVersion(a.version); err != nil {
+			if err := installation.ValidateVersion(a.version); err != nil {
 				return domainError(
 					"SELF_VERSION_INVALID",
 					"此 okit 安装的版本信息无效。",
@@ -60,32 +60,32 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 					return runError(err)
 				}
 				releaseClient := &http.Client{Timeout: 30 * time.Second}
-				runner = selfmanage.NewLifecycle(selfmanage.Dependencies{
+				runner = installation.NewLifecycle(installation.Dependencies{
 					CurrentVersion: a.version,
 					Executable:     executable,
 					OKITHome:       home,
-					Source: selfmanage.ManifestSource{
+					Source: installation.ManifestSource{
 						GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
 						Version: options.version, Prerelease: options.prerelease && options.version == "", Client: releaseClient,
 					},
-					Downloader: selfmanage.HTTPDownloader{Client: &http.Client{Timeout: 2 * time.Minute}},
-					Replace:    selfmanage.PlatformReplace,
+					Downloader: installation.HTTPDownloader{Client: &http.Client{Timeout: 2 * time.Minute}},
+					Replace:    installation.PlatformReplace,
 				})
 			}
-			mode := selfmanage.ModeApply
+			mode := installation.ModeApply
 			if options.dryRun {
-				mode = selfmanage.ModeDryRun
+				mode = installation.ModeDryRun
 			} else if options.check {
-				mode = selfmanage.ModeCheck
+				mode = installation.ModeCheck
 			}
-			var progress selfmanage.ProgressReporter
+			var progress installation.ProgressReporter
 			if global.format != "json" && !options.check && !options.dryRun && isTerminal(cmd.ErrOrStderr()) {
 				progress = &terminalUpdateProgress{writer: cmd.ErrOrStderr()}
 			}
-			result, err := runner.Run(context.Background(), selfmanage.Intent{Mode: mode, Version: options.version, IncludePrerelease: options.prerelease}, progress)
+			result, err := runner.Run(context.Background(), installation.Intent{Mode: mode, Version: options.version, IncludePrerelease: options.prerelease}, progress)
 			if err != nil {
-				var failure *selfmanage.Failure
-				if errors.As(err, &failure) && failure.Kind == selfmanage.FailureReleaseAccessDenied {
+				var failure *installation.Failure
+				if errors.As(err, &failure) && failure.Kind == installation.FailureReleaseAccessDenied {
 					return domainError("SELF_RELEASE_ACCESS_DENIED", "发布服务拒绝了更新请求。", "请稍后重试；若触发服务限流，请配置 GH_TOKEN 或 GITHUB_TOKEN。")
 				}
 				return runError(err)
@@ -142,7 +142,7 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 	return command
 }
 
-func updatePlanSummary(result selfmanage.Result) string {
+func updatePlanSummary(result installation.Result) string {
 	if result.Available == "" || result.Available == result.Current {
 		return "当前已是最新版本。"
 	}
@@ -151,19 +151,19 @@ func updatePlanSummary(result selfmanage.Result) string {
 
 type terminalUpdateProgress struct {
 	writer io.Writer
-	stage  selfmanage.ProgressStage
+	stage  installation.ProgressStage
 	bar    *progressbar.ProgressBar
 	barMax int64
 }
 
-func (p *terminalUpdateProgress) ReportProgress(progress selfmanage.Progress) {
+func (p *terminalUpdateProgress) ReportProgress(progress installation.Progress) {
 	previousStage := p.stage
 	switch progress.Stage {
-	case selfmanage.ProgressUpdateAvailable:
+	case installation.ProgressUpdateAvailable:
 		_, _ = fmt.Fprintln(p.writer, updateProgressMessage(progress))
-	case selfmanage.ProgressDownloadAsset, selfmanage.ProgressDownloadChecksum:
+	case installation.ProgressDownloadAsset, installation.ProgressDownloadChecksum:
 		p.renderDownload(progress, previousStage)
-	case selfmanage.ProgressComplete:
+	case installation.ProgressComplete:
 		p.finishBar()
 		_, _ = fmt.Fprintln(p.writer, updateProgressMessage(progress))
 	default:
@@ -173,7 +173,7 @@ func (p *terminalUpdateProgress) ReportProgress(progress selfmanage.Progress) {
 	p.stage = progress.Stage
 }
 
-func (p *terminalUpdateProgress) renderDownload(progress selfmanage.Progress, previousStage selfmanage.ProgressStage) {
+func (p *terminalUpdateProgress) renderDownload(progress installation.Progress, previousStage installation.ProgressStage) {
 	if p.bar == nil || previousStage != progress.Stage {
 		p.finishBar()
 		p.newDownloadBar(progress)
@@ -186,7 +186,7 @@ func (p *terminalUpdateProgress) renderDownload(progress selfmanage.Progress, pr
 	}
 }
 
-func (p *terminalUpdateProgress) newDownloadBar(progress selfmanage.Progress) {
+func (p *terminalUpdateProgress) newDownloadBar(progress installation.Progress) {
 	maximum := progress.Total
 	if maximum <= 0 {
 		maximum = -1
@@ -210,21 +210,21 @@ func (p *terminalUpdateProgress) finishBar() {
 	p.barMax = 0
 }
 
-func updateProgressMessage(progress selfmanage.Progress) string {
+func updateProgressMessage(progress installation.Progress) string {
 	switch progress.Stage {
-	case selfmanage.ProgressUpdateAvailable:
+	case installation.ProgressUpdateAvailable:
 		return fmt.Sprintf("有可用更新：%s", progress.Version)
-	case selfmanage.ProgressDownloadAsset:
+	case installation.ProgressDownloadAsset:
 		return "正在下载更新"
-	case selfmanage.ProgressDownloadChecksum:
+	case installation.ProgressDownloadChecksum:
 		return "正在下载校验和"
-	case selfmanage.ProgressVerifyChecksum:
+	case installation.ProgressVerifyChecksum:
 		return "正在校验文件……"
-	case selfmanage.ProgressExtract:
+	case installation.ProgressExtract:
 		return "正在解压更新……"
-	case selfmanage.ProgressReplace:
+	case installation.ProgressReplace:
 		return "正在替换可执行文件……"
-	case selfmanage.ProgressComplete:
+	case installation.ProgressComplete:
 		if progress.Scheduled {
 			return "已计划更新；当前进程退出后，新版本将生效。"
 		}
@@ -244,7 +244,7 @@ func isTerminal(writer io.Writer) bool {
 }
 
 func (a *App) newUninstallCommand(global *globalOptions) *cobra.Command {
-	options := selfmanage.UninstallOptions{}
+	options := installation.UninstallOptions{}
 	command := &cobra.Command{
 		Use:         "uninstall",
 		Short:       "卸载 okit",
@@ -272,7 +272,7 @@ func (a *App) newUninstallCommand(global *globalOptions) *cobra.Command {
 				if err != nil {
 					return runError(err)
 				}
-				uninstaller = &selfmanage.Uninstaller{OKITHome: home, Executable: executable}
+				uninstaller = &installation.Uninstaller{OKITHome: home, Executable: executable}
 			}
 			result, err := uninstaller.Uninstall(options)
 			if err != nil {
