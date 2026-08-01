@@ -71,7 +71,9 @@ func TestWorkflowsSeparateRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	}
 	verified := strings.Index(releaseWorkflow, "jq -e --arg version")
 	uploaded := strings.Index(releaseWorkflow, "gh release upload pre-release")
-	if verified < 0 || uploaded < 0 || verified > uploaded { t.Error("预发布指针必须在验证 release-manifest 后更新") }
+	if verified < 0 || uploaded < 0 || verified > uploaded {
+		t.Error("预发布指针必须在验证 release-manifest 后更新")
+	}
 	if !strings.Contains(repositoryFile(t, ".goreleaser.yaml"), "release:") {
 		t.Error("GoReleaser 必须发布 Release 制品")
 	}

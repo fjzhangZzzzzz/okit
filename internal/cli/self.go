@@ -2,14 +2,10 @@ package cli
 
 import (
 	"bufio"
-	"context"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -20,11 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type upgradeOptions struct {
-	check, dryRun, prerelease bool
-	version                   string
-}
-
 func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 	options := upgradeOptions{}
 	command := &cobra.Command{
@@ -33,106 +24,12 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if a.buildMode == BuildModeDevelopment {
-				return newPresenter(cmd, global).Render(clioutput.View{
-					Human: clioutput.Document{
-						Title: "开发构建不支持检查更新。",
-						Hint:  "请安装已发布的 okit 版本后重试。",
-					},
-					Machine: map[string]any{
-						"update_supported": false,
-						"reason":           "development_build",
-						"action":           "请安装已发布的 okit 版本后重试。",
-					},
-				})
-			}
-			if err := installation.ValidateVersion(a.version); err != nil {
-				return domainError(
-					"SELF_VERSION_INVALID",
-					"此 okit 安装的版本信息无效。",
-					"请从正式发布版本重新安装 okit。",
-				)
-			}
-			runner := a.upgradeRunner
-			if runner == nil {
-				home, executable, err := selfPaths()
-				if err != nil {
-					return runError(err)
-				}
-				releaseClient := &http.Client{Timeout: 30 * time.Second}
-				runner = installation.NewLifecycle(installation.Dependencies{
-					CurrentVersion: a.version,
-					Executable:     executable,
-					OKITHome:       home,
-					Source: installation.ManifestSource{
-						GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
-						Version: options.version, Prerelease: options.prerelease && options.version == "", Client: releaseClient,
-					},
-					Downloader: installation.HTTPDownloader{Client: &http.Client{Timeout: 2 * time.Minute}},
-					Replace:    installation.PlatformReplace,
-				})
-			}
-			mode := installation.ModeApply
-			if options.dryRun {
-				mode = installation.ModeDryRun
-			} else if options.check {
-				mode = installation.ModeCheck
-			}
-			var progress installation.ProgressReporter
-			if global.format != "json" && !options.check && !options.dryRun && isTerminal(cmd.ErrOrStderr()) {
-				progress = &terminalUpdateProgress{writer: cmd.ErrOrStderr()}
-			}
-			result, err := runner.Run(context.Background(), installation.Intent{Mode: mode, Version: options.version, IncludePrerelease: options.prerelease}, progress)
+			workflow := a.newUpgradeWorkflow(options, global.format, isTerminal(cmd.ErrOrStderr()), cmd.ErrOrStderr())
+			result, err := workflow.Run(cmd.Context())
 			if err != nil {
-				var failure *installation.Failure
-				if errors.As(err, &failure) && failure.Kind == installation.FailureReleaseAccessDenied {
-					return domainError("SELF_RELEASE_ACCESS_DENIED", "发布服务拒绝了更新请求。", "请稍后重试；若触发服务限流，请配置 GH_TOKEN 或 GITHUB_TOKEN。")
-				}
-				return runError(err)
+				return err
 			}
-			available := result.Available != "" && result.Available != result.Current
-			title := "okit 已是最新版本。"
-			hint := ""
-			if options.check && available {
-				title = "有可用更新"
-				hint = "运行 `okit upgrade` 安装。"
-			} else if options.dryRun {
-				title = "更新计划"
-			} else if result.Scheduled {
-				title = "已计划更新"
-				hint = "当前进程退出后，新版本将生效。"
-			} else if result.Updated {
-				title = "okit 更新成功。"
-			} else if available {
-				title = "已选择更新版本"
-			}
-			document := clioutput.Document{Title: title, Hint: hint}
-			if options.check || options.dryRun {
-				document.Fields = []clioutput.Field{{Label: "当前版本", Value: result.Current}, {Label: "可用版本", Value: result.Available}}
-			} else if result.Updated {
-				label := "已更新至"
-				if result.Scheduled {
-					label = "目标版本"
-				}
-				document.Fields = []clioutput.Field{{Label: label, Value: result.Available}}
-			}
-			if options.dryRun {
-				if result.Plan != "" {
-					document.Lines = []string{updatePlanSummary(result)}
-				}
-				document.Summary = "未作任何更改。"
-			}
-			machine := map[string]any{
-				"current_version": result.Current, "available_version": result.Available,
-				"update_available": available, "updated": result.Updated, "scheduled": result.Scheduled,
-			}
-			if result.Plan != "" {
-				machine["plan"] = result.Plan
-			}
-			if err := newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: machine}); err != nil {
-				return runError(err)
-			}
-			return nil
+			return newPresenter(cmd, global).Render(result.View())
 		},
 	}
 	command.Flags().BoolVar(&options.check, "check", false, "仅检查是否有可用更新")
@@ -140,13 +37,6 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 	command.Flags().BoolVar(&options.prerelease, "prerelease", false, "包含预发布版本")
 	command.Flags().BoolVar(&options.dryRun, "dry-run", false, "显示更新计划但不修改文件")
 	return command
-}
-
-func updatePlanSummary(result installation.Result) string {
-	if result.Available == "" || result.Available == result.Current {
-		return "当前已是最新版本。"
-	}
-	return fmt.Sprintf("将从 %s 更新到 %s。", result.Current, result.Available)
 }
 
 type terminalUpdateProgress struct {

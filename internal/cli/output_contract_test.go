@@ -178,8 +178,12 @@ func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
 		t.Fatalf("json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	var payload map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil || payload["update_available"] != true {
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil || payload["schema_version"] != float64(1) || payload["mode"] != "check" || payload["status"] != "available" {
 		t.Fatalf("payload=%v err=%v", payload, err)
+	}
+	action, ok := payload["next_action"].(map[string]any)
+	if !ok || action["kind"] != "run_upgrade" {
+		t.Fatalf("next_action=%v", payload["next_action"])
 	}
 }
 
@@ -210,7 +214,7 @@ func TestSelfUpdateAppliedHumanOutputShowsTargetOnly(t *testing.T) {
 	if code := app.Run([]string{"upgrade"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "已更新至:") || !strings.Contains(stdout.String(), "v1.1.0") {
+	if !strings.Contains(stdout.String(), "目标版本:") || !strings.Contains(stdout.String(), "v1.1.0") {
 		t.Fatalf("applied output does not identify target: %q", stdout.String())
 	}
 	if strings.Contains(stdout.String(), "当前版本:") || strings.Contains(stdout.String(), "可用版本:") {
@@ -230,7 +234,7 @@ func TestSelfUpdateDevelopmentBuildReturnsInformationalStatus(t *testing.T) {
 	stderr.Reset()
 	code = app.Run([]string{"--format", "json", "upgrade", "--check"}, &stdout, &stderr)
 	var status map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &status); code != 0 || err != nil || status["update_supported"] != false || status["reason"] != "development_build" || status["action"] == "" || stderr.Len() != 0 {
+	if err := json.Unmarshal(stdout.Bytes(), &status); code != 0 || err != nil || status["schema_version"] != float64(1) || status["mode"] != "check" || status["status"] != "unsupported" || stderr.Len() != 0 {
 		t.Fatalf("json code=%d status=%v err=%v stderr=%q", code, status, err, stderr.String())
 	}
 }
@@ -245,15 +249,20 @@ func TestSelfUpdateLocalSemanticVersionStillUsesDevelopmentStatus(t *testing.T) 
 	}
 }
 
-func TestInvalidReleaseMetadataIsDifferentFromDevelopmentBuild(t *testing.T) {
+func TestInvalidReleaseMetadataReturnsNormalUpgradeResult(t *testing.T) {
 	app := NewBuildMode("broken", "abc123", "2026-07-19", BuildModeRelease)
 	var stdout, stderr bytes.Buffer
 	code := app.Run([]string{"upgrade", "--check"}, &stdout, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), "版本信息无效") || !strings.Contains(stderr.String(), "重新安装 okit") {
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "版本信息无效") || !strings.Contains(stdout.String(), "重新安装 okit") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if strings.Contains(stderr.String(), "development build") || strings.Contains(stderr.String(), "SELF_VERSION_INVALID") {
-		t.Fatalf("release diagnostic is not human-readable or was misclassified: %q", stderr.String())
+	stdout.Reset()
+	if code = app.Run([]string{"--format", "json", "upgrade", "--check"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || result["status"] != "invalid_installation" {
+		t.Fatalf("result=%v err=%v", result, err)
 	}
 }
 
