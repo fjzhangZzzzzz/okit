@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/fjzhangZzzzzz/okit/internal/releasechannel"
 	"github.com/fjzhangZzzzzz/okit/internal/releasemanifest"
 )
 
 const (
 	defaultReleaseBaseURL = "https://github.com/fjzhangZzzzzz/okit/releases"
-	prereleasePointerTag  = "pre-release"
 )
 
 type ManifestSource struct {
@@ -31,16 +31,12 @@ func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
 	if base == "" {
 		base = defaultReleaseBaseURL
 	}
-	manifestURL := base + "/latest/download/release-manifest.json"
-	if s.Prerelease && s.Version == "" {
-		manifestURL = base + "/download/" + prereleasePointerTag + "/release-manifest.json"
-	}
 	if s.Version != "" {
 		if err := releasemanifest.ValidateVersion(s.Version); err != nil {
 			return nil, err
 		}
-		manifestURL = base + "/download/" + s.Version + "/release-manifest.json"
 	}
+	manifestURL := releasechannel.Join(base, releasechannel.Request{Version: s.Version, IncludePrerelease: s.Prerelease && s.Version == ""})
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
 	if err != nil {
 		return nil, err

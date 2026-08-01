@@ -17,6 +17,34 @@ type Metadata struct {
 	ManagedFiles []string `json:"managed_files,omitempty"`
 }
 
+// ManagedInstallation is the safety module for resources that okit may modify.
+// Construction rejects metadata that cannot prove official ownership.
+type ManagedInstallation struct{ Metadata }
+
+func NewManagedInstallation(metadata Metadata) (ManagedInstallation, error) {
+	if err := requireOfficial(metadata); err != nil {
+		return ManagedInstallation{}, err
+	}
+	return ManagedInstallation{Metadata: metadata}, nil
+}
+
+func (m ManagedInstallation) UninstallPlan(home string, purge bool) []string {
+	plan := append([]string(nil), m.ManagedFiles...)
+	if m.Executable != "" {
+		plan = append(plan, m.Executable)
+	}
+	plan = append(plan, metadataPath(home))
+	if purge {
+		plan = append(plan, home)
+	}
+	return plan
+}
+
+func (m ManagedInstallation) WithRelease(version, channel string) ManagedInstallation {
+	m.Version, m.Channel = version, channel
+	return m
+}
+
 func metadataPath(home string) string { return filepath.Join(home, "install.json") }
 
 func SaveMetadata(home string, metadata Metadata) error {

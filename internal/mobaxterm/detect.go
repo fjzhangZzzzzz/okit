@@ -105,7 +105,11 @@ func (s Service) DeployLicense(username, version string, dryRun bool) (string, e
 	if len(candidates) == 0 {
 		return "", fmt.Errorf("MobaXterm installation was not found")
 	}
-	target := candidates[0]
+	return s.DeployLicenseTo(candidates[0], username, version, dryRun)
+}
+
+// DeployLicenseTo performs the write for a caller-selected installation.
+func (s Service) DeployLicenseTo(target Candidate, username, version string, dryRun bool) (string, error) {
 	if version == "" {
 		version = target.Version
 	}

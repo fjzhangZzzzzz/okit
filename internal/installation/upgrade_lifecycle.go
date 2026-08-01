@@ -141,7 +141,8 @@ func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressRep
 	if err != nil {
 		return Result{}, err
 	}
-	if err := requireOfficial(metadata); err != nil {
+	managed, err := NewManagedInstallation(metadata)
+	if err != nil {
 		return Result{}, err
 	}
 	if u.CurrentVersion == "" {
@@ -212,8 +213,7 @@ func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressRep
 	if err != nil {
 		return Result{}, err
 	}
-	metadata.Version = release.Version
-	metadata.Channel = releaseChannel(release)
+	metadata = managed.WithRelease(release.Version, releaseChannel(release)).Metadata
 	removeStaging = !scheduled
 	if !scheduled {
 		if err := SaveMetadata(u.OKITHome, metadata); err != nil {

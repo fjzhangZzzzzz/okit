@@ -58,7 +58,7 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			service, _, err := mobaContext()
+			selected, err := selectMobaInstallation()
 			if err != nil {
 				return err
 			}
@@ -66,16 +66,16 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 				return usageError("deploy 需要 --username")
 			}
 			presenter := newPresenter(cmd, global)
-			if !dryRun {
-				plan, err := service.DeployLicense(username, version, true)
+			if needsMobaConfirmation(dryRun, force) {
+				plan, err := selected.service.DeployLicenseTo(selected.candidate, username, version, true)
 				if err != nil {
 					return runError(err)
 				}
-				if !force && !confirmAction(cmd.InOrStdin(), presenter, mobaLicenseDeployPrompt(plan)) {
+				if !confirmAction(cmd.InOrStdin(), presenter, mobaLicenseDeployPrompt(plan)) {
 					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消部署许可证", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 				}
 			}
-			result, err := service.DeployLicense(username, version, dryRun)
+			result, err := selected.service.DeployLicenseTo(selected.candidate, username, version, dryRun)
 			if err != nil {
 				return runError(err)
 			}

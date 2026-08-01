@@ -29,7 +29,7 @@ jobs:
           go test ./...
           go vet ./...
       - name: 生成发布清单
-        run: go run ./internal/releasemanifest/cmd/generate --version "${{ github.event.release.tag_name }}" --output .release/release-manifest.json
+        run: go run ./cmd/releasemanifest --version "${{ github.event.release.tag_name }}" --output .release/release-manifest.json
       - name: 构建并上传预发布制品
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -47,6 +47,7 @@ jobs:
           gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --prerelease
           gh release view pre-release --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create pre-release --repo "$GITHUB_REPOSITORY" --prerelease --title "预发布通道"
           gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern release-manifest.json --dir .pointer
+          jq -e --arg version "$VERSION" '.version == $version and (.assets | length > 0)' .pointer/release-manifest.json >/dev/null
           gh release upload pre-release .pointer/release-manifest.json --repo "$GITHUB_REPOSITORY" --clobber
 
   finalize-stable:

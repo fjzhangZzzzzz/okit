@@ -183,6 +183,23 @@ func TestInstallMetadataCanBeUpdatedAtomically(t *testing.T) {
 	}
 }
 
+func TestManagedInstallationOwnsSafetyAndResourcePlan(t *testing.T) {
+	metadata := Metadata{Method: "official", Executable: "okit", ManagedFiles: []string{"managed"}}
+	managed, err := NewManagedInstallation(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := managed.UninstallPlan("home", true); len(got) != 4 {
+		t.Fatalf("plan=%v", got)
+	}
+	if got := managed.WithRelease("v1.2.0", "prerelease").Metadata; got.Version != "v1.2.0" || got.Channel != "prerelease" {
+		t.Fatalf("metadata=%+v", got)
+	}
+	if _, err := NewManagedInstallation(Metadata{Method: "scoop"}); err == nil {
+		t.Fatal("package-managed installation accepted")
+	}
+}
+
 func TestUninstallPreservePurgeAndManagedResources_SELF007_SELF008_SELF009(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, ".okit")

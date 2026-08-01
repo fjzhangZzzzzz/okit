@@ -29,17 +29,11 @@ func (u *Uninstaller) Uninstall(options UninstallOptions) (UninstallResult, erro
 			return UninstallResult{}, err
 		}
 	}
-	if err := requireOfficial(metadata); err != nil {
+	managed, err := NewManagedInstallation(metadata)
+	if err != nil {
 		return UninstallResult{}, err
 	}
-	plan := append([]string(nil), metadata.ManagedFiles...)
-	if metadata.Executable != "" {
-		plan = append(plan, metadata.Executable)
-	}
-	plan = append(plan, metadataPath(u.OKITHome))
-	if options.Purge {
-		plan = append(plan, u.OKITHome)
-	}
+	plan := managed.UninstallPlan(u.OKITHome, options.Purge)
 	result := UninstallResult{Plan: plan}
 	if options.DryRun {
 		return result, nil

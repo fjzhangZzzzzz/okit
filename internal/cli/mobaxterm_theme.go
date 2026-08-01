@@ -2,7 +2,6 @@ package cli
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -73,27 +72,24 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			service, home, err := mobaContext()
+			selected, err := selectMobaInstallation()
 			if err != nil {
 				return err
 			}
+			home := selected.home
 			scheme, err := theme.Resolve(mobaThemeCache(home), args[0])
 			if err != nil {
 				return runError(err)
 			}
-			candidates, err := service.Status()
-			if err != nil || len(candidates) == 0 {
-				return runError(fmt.Errorf("MobaXterm installation was not found"))
-			}
 			presenter := newPresenter(cmd, global)
-			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeApplyPrompt()) {
+			if needsMobaConfirmation(dryRun, force) && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeApplyPrompt()) {
 				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消应用主题", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 			}
 			var result theme.Result
 			if noBackup {
-				result, err = theme.ApplyWithoutBackup(candidates[0].ConfigPath, scheme, dryRun, nil)
+				result, err = theme.ApplyWithoutBackup(selected.candidate.ConfigPath, scheme, dryRun, nil)
 			} else {
-				result, err = theme.Apply(candidates[0].ConfigPath, scheme, mobaThemeBackups(home), dryRun, nil)
+				result, err = theme.Apply(selected.candidate.ConfigPath, scheme, mobaThemeBackups(home), dryRun, nil)
 			}
 			if err != nil {
 				return runError(err)
@@ -107,8 +103,8 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 				title = "MobaXterm 主题未发生变化。"
 			}
 			return presenter.Render(clioutput.View{
-				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "主题", Value: args[0]}, {Label: "配置文件", Value: candidates[0].ConfigPath}, {Label: "备份", Value: result.BackupPath}}, Summary: summary},
-				Machine: map[string]any{"status": themeStatus(dryRun, result.Changed), "theme": args[0], "config_path": candidates[0].ConfigPath, "backup_path": result.BackupPath, "changed": result.Changed},
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "主题", Value: args[0]}, {Label: "配置文件", Value: selected.candidate.ConfigPath}, {Label: "备份", Value: result.BackupPath}}, Summary: summary},
+				Machine: map[string]any{"status": themeStatus(dryRun, result.Changed), "theme": args[0], "config_path": selected.candidate.ConfigPath, "backup_path": result.BackupPath, "changed": result.Changed},
 			})
 		},
 	}
@@ -127,26 +123,22 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			service, home, err := mobaContext()
+			selectedInstallation, err := selectMobaInstallation()
 			if err != nil {
 				return err
 			}
 			selected := backup
 			if selected == "" {
-				selected, err = theme.LatestBackup(mobaThemeBackups(home))
+				selected, err = theme.LatestBackup(mobaThemeBackups(selectedInstallation.home))
 				if err != nil {
 					return runError(err)
 				}
 			}
-			candidates, err := service.Status()
-			if err != nil || len(candidates) == 0 {
-				return runError(fmt.Errorf("MobaXterm installation was not found"))
-			}
 			presenter := newPresenter(cmd, global)
-			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeRestorePrompt()) {
+			if needsMobaConfirmation(dryRun, force) && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeRestorePrompt()) {
 				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消还原主题", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 			}
-			if err := theme.Restore(candidates[0].ConfigPath, selected, dryRun); err != nil {
+			if err := theme.Restore(selectedInstallation.candidate.ConfigPath, selected, dryRun); err != nil {
 				return runError(err)
 			}
 			title := "已还原 MobaXterm 配置"
@@ -156,8 +148,8 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 				summary = "未作任何更改。"
 			}
 			return presenter.Render(clioutput.View{
-				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "备份", Value: selected}, {Label: "配置文件", Value: candidates[0].ConfigPath}}, Summary: summary},
-				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "backup_path": selected, "config_path": candidates[0].ConfigPath},
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "备份", Value: selected}, {Label: "配置文件", Value: selectedInstallation.candidate.ConfigPath}}, Summary: summary},
+				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "backup_path": selected, "config_path": selectedInstallation.candidate.ConfigPath},
 			})
 		},
 	}

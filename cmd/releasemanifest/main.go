@@ -10,11 +10,11 @@ import (
 )
 
 func main() {
-	version := flag.String("version", "", "v-prefixed release version")
-	output := flag.String("output", "", "output JSON path")
+	version := flag.String("version", "", "带 v 前缀的发布版本")
+	output := flag.String("output", "", "输出 JSON 路径")
 	flag.Parse()
 	if *output == "" {
-		fmt.Fprintln(os.Stderr, "--output is required")
+		fmt.Fprintln(os.Stderr, "必须指定 --output")
 		os.Exit(2)
 	}
 	manifest, err := releasemanifest.New(*version)
