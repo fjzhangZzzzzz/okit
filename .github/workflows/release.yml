@@ -1,35 +1,23 @@
 name: 发布
 
 on:
-  push:
-    tags: ['v*.*.*']
+  release:
+    types: [published, released]
 
 permissions:
   contents: write
 
 jobs:
-  validate-release-candidate:
+  publish-prerelease:
+    if: >-
+      github.event.action == 'published' &&
+      github.event.release.prerelease &&
+      github.event.release.tag_name != 'pre-release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-      - name: 验证正式版本对应的 RC
-        if: ${{ !contains(github.ref_name, '-') }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          sh scripts/verify-release-candidate.sh
-          --version "${{ github.ref_name }}"
-          --repository "${{ github.repository }}"
-          --commit "${{ github.sha }}"
-
-  release:
-    needs: validate-release-candidate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
+          ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
@@ -41,81 +29,37 @@ jobs:
           go test ./...
           go vet ./...
       - name: 生成发布清单
-        run: go run ./internal/releasemanifest/cmd/generate --version "${{ github.ref_name }}" --output .release/release-manifest.json
-      - uses: goreleaser/goreleaser-action@v7
+        run: go run ./internal/releasemanifest/cmd/generate --version "${{ github.event.release.tag_name }}" --output .release/release-manifest.json
+      - name: 构建并上传预发布制品
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: '~> v2'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
-
-  smoke-release-lifecycle-linux:
-    needs: release
-    runs-on: ubuntu-latest
-    env:
-      OKIT_VERSION: ${{ github.ref_name }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v6
-      - name: Linux 发布生命周期冒烟测试
-        env:
-          OKIT_HOME: ${{ runner.temp }}/okit-home
-          OKIT_INSTALL_DIR: ${{ runner.temp }}/okit-bin
-        run: sh scripts/smoke-release-lifecycle.sh --release --version "$OKIT_VERSION" --repository "${{ github.repository }}"
-
-  smoke-release-lifecycle-windows:
-    needs: release
-    runs-on: windows-latest
-    env:
-      OKIT_VERSION: ${{ github.ref_name }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v6
-      - name: Windows 发布生命周期冒烟测试
-        shell: pwsh
-        env:
-          OKIT_HOME: ${{ runner.temp }}\okit-home
-          OKIT_INSTALL_DIR: ${{ runner.temp }}\okit-bin
-        run: scripts/smoke-release-lifecycle.ps1 -Mode release -Version $env:OKIT_VERSION -Repository "${{ github.repository }}"
-
-  cleanup-release-candidates:
-    needs: mark-release-validated
-    if: ${{ !contains(github.ref_name, '-') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: 删除正式版本对应的 RC
+          GORELEASER_CURRENT_TAG: ${{ github.event.release.tag_name }}
+      - name: 更新预发布通道指针
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FINAL_VERSION: ${{ github.ref_name }}
+          VERSION: ${{ github.event.release.tag_name }}
         run: |
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' | while IFS= read -r tag; do
-            case "$tag" in
-              "$FINAL_VERSION"-rc.[0-9]*)
-                suffix=${tag#"$FINAL_VERSION"-rc.}
-                case "$suffix" in
-                  ''|*[!0-9]*) continue ;;
-                esac
-                gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-                ;;
-            esac
-          done
+          gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --prerelease
+          gh release view pre-release --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create pre-release --repo "$GITHUB_REPOSITORY" --prerelease --title "预发布通道"
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern release-manifest.json --dir .pointer
+          gh release upload pre-release .pointer/release-manifest.json --repo "$GITHUB_REPOSITORY" --clobber
 
-  mark-release-validated:
-    needs: [smoke-release-lifecycle-linux, smoke-release-lifecycle-windows]
+  finalize-stable:
+    if: >-
+      github.event.action == 'released' &&
+      github.event.release.tag_name != 'pre-release'
     runs-on: ubuntu-latest
     steps:
-      - name: 写入发布验证标记
+      - name: 清理已升格的预发布通道指针
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ github.ref_name }}
-          RELEASE_COMMIT: ${{ github.sha }}
-          RELEASE_RUN_ID: ${{ github.run_id }}
+          VERSION: ${{ github.event.release.tag_name }}
         run: |
-          printf '%s\n' \
-            '{"version":"'"$RELEASE_VERSION"'","commit":"'"$RELEASE_COMMIT"'","run_id":"'"$RELEASE_RUN_ID"'","linux":true,"windows":true}' \
-            > release-validation.json
-          gh release upload "$RELEASE_VERSION" release-validation.json \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+          if gh release download pre-release --repo "$GITHUB_REPOSITORY" --pattern release-manifest.json --dir .pointer 2>/dev/null; then
+            test "$(jq -r .version .pointer/release-manifest.json)" = "$VERSION" && gh release delete-asset pre-release release-manifest.json --repo "$GITHUB_REPOSITORY" --yes || true
+          fi

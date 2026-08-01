@@ -64,13 +64,13 @@ func TestGoReleaserBuildsDocumentedMatrixAndPublishesInstallers(t *testing.T) {
 
 func TestWorkflowsSeparateRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	releaseWorkflow := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"validate-release-candidate", "verify-release-candidate.sh", "GORELEASER_CURRENT_TAG", "github.ref_name", "smoke-release-lifecycle-linux", "smoke-release-lifecycle-windows", "smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1", "--release", "internal/releasemanifest/cmd/generate", "mark-release-validated", "release-validation.json", "cleanup-release-candidates", "--cleanup-tag", "-rc."} {
+	for _, required := range []string{"release:", "published, released", "github.event.release.prerelease", "GORELEASER_CURRENT_TAG", "internal/releasemanifest/cmd/generate", "pre-release", "gh release edit", "gh release upload", "delete-asset"} {
 		if !strings.Contains(releaseWorkflow, required) {
 			t.Errorf("发布工作流不包含 %q", required)
 		}
 	}
-	if !strings.Contains(repositoryFile(t, ".goreleaser.yaml"), "prerelease: auto") {
-		t.Error("GoReleaser 必须把预发布 tag 发布为 GitHub Pre-release")
+	if !strings.Contains(repositoryFile(t, ".goreleaser.yaml"), "release:") {
+		t.Error("GoReleaser 必须发布 Release 制品")
 	}
 	for _, file := range []string{"smoke-release-lifecycle.sh", "smoke-release-lifecycle.ps1"} {
 		smoke := repositoryFile(t, "scripts", file)

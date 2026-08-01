@@ -8,6 +8,7 @@ import (
 )
 
 var ErrNoUpdate = errors.New("no update available")
+var ErrNoPrerelease = errors.New("no prerelease is available")
 
 type semanticVersion struct {
 	major, minor, patch int

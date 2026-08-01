@@ -75,13 +75,13 @@ func (f fakeDownload) Download(_ context.Context, url string) ([]byte, error) {
 }
 
 func TestReleaseSelection_SELF001_SELF002(t *testing.T) {
-	releases := []Release{{Version: "v1.3.0-rc.1", Prerelease: true}, {Version: "v1.2.0"}, {Version: "v1.1.0"}}
+	releases := []Release{{Version: "v1.3.0", Prerelease: true}, {Version: "v1.2.0"}, {Version: "v1.1.0"}}
 	selected, err := SelectRelease("v1.1.0", releases, UpdateOptions{})
 	if err != nil || selected.Version != "v1.2.0" {
 		t.Fatalf("selected=%+v err=%v", selected, err)
 	}
 	selected, err = SelectRelease("v1.2.0", releases, UpdateOptions{Prerelease: true})
-	if err != nil || selected.Version != "v1.3.0-rc.1" {
+	if err != nil || selected.Version != "v1.3.0" {
 		t.Fatalf("prerelease selected=%+v err=%v", selected, err)
 	}
 	if _, err := SelectRelease("v1.2.0", releases, UpdateOptions{Version: "v1.1.0"}); err != nil {
@@ -90,20 +90,19 @@ func TestReleaseSelection_SELF001_SELF002(t *testing.T) {
 	if _, err := SelectRelease("v1.2.0", []Release{{Version: "v1.1.0"}}, UpdateOptions{}); err == nil {
 		t.Fatal("implicit downgrade accepted")
 	}
-	selected, err = SelectRelease("v1.2.0", []Release{{Version: "v1.3.0-rc.2", Prerelease: true}, {Version: "v1.3.0-rc.10", Prerelease: true}}, UpdateOptions{Prerelease: true})
-	if err != nil || selected.Version != "v1.3.0-rc.10" {
-		t.Fatalf("semantic prerelease ordering selected=%+v err=%v", selected, err)
+	selected, err = SelectRelease("v1.2.0", []Release{{Version: "v1.3.0", Prerelease: true}, {Version: "v1.4.0", Prerelease: true}}, UpdateOptions{Prerelease: true})
+	if err != nil || selected.Version != "v1.4.0" {
+		t.Fatalf("semantic ordering selected=%+v err=%v", selected, err)
 	}
 }
 
 func TestReleaseChannel(t *testing.T) {
-	for version, want := range map[string]string{
-		"v1.2.3":       "stable",
-		"v1.2.3+build": "stable",
-		"v1.2.3-rc.1":  "prerelease",
+	for release, want := range map[Release]string{
+		{Version: "v1.2.3"}:                   "stable",
+		{Version: "v1.2.3", Prerelease: true}: "prerelease",
 	} {
-		if got := releaseChannel(version); got != want {
-			t.Errorf("releaseChannel(%q) = %q, want %q", version, got, want)
+		if got := releaseChannel(release); got != want {
+			t.Errorf("releaseChannel(%+v) = %q, want %q", release, got, want)
 		}
 	}
 }
@@ -310,7 +309,7 @@ func TestUpdaterReportsProgressStages(t *testing.T) {
 	updater := Updater{
 		CurrentVersion: "v1.0.0", Executable: filepath.Join(root, "okit.exe"), OKITHome: filepath.Join(root, "home"),
 		Metadata: &Metadata{Method: "official"},
-		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0-rc.1", Prerelease: true, AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
+		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0", Prerelease: true, AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
 		Downloader: fakeDownload{data: map[string][]byte{
 			"asset": archive.Bytes(), "sum": []byte(fmt.Sprintf("%x  okit.zip\n", digest)),
 		}},

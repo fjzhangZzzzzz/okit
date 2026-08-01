@@ -124,6 +124,9 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 		u.Source = defaultReleaseSource(options, goos, arch, client)
 	}
 	releases, err := u.Source.Releases(ctx)
+	if errors.Is(err, ErrNoPrerelease) {
+		return UpdateResult{Current: u.CurrentVersion, Available: u.CurrentVersion, Plan: "no prerelease is available"}, nil
+	}
 	if err != nil {
 		return UpdateResult{}, err
 	}
@@ -184,7 +187,7 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 		return UpdateResult{}, err
 	}
 	metadata.Version = release.Version
-	metadata.Channel = releaseChannel(release.Version)
+	metadata.Channel = releaseChannel(release)
 	removeStaging = !scheduled
 	if !scheduled {
 		if err := SaveMetadata(u.OKITHome, metadata); err != nil {
@@ -196,9 +199,8 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 	return result, nil
 }
 
-func releaseChannel(version string) string {
-	parsed, err := parseVersion(version)
-	if err == nil && parsed.prerelease != "" {
+func releaseChannel(release Release) string {
+	if release.Prerelease {
 		return "prerelease"
 	}
 	return "stable"
@@ -221,10 +223,7 @@ func downloadWithProgress(ctx context.Context, downloader Downloader, url string
 }
 
 func defaultReleaseSource(options UpdateOptions, goos, goarch string, client *http.Client) ReleaseSource {
-	if options.Prerelease && options.Version == "" {
-		return GitHubSource{GOOS: goos, GOARCH: goarch, Client: client}
-	}
-	return ManifestSource{GOOS: goos, GOARCH: goarch, Version: options.Version, Client: client}
+	return ManifestSource{GOOS: goos, GOARCH: goarch, Version: options.Version, Prerelease: options.Prerelease && options.Version == "", Client: client}
 }
 
 func (u *Updater) metadata() (Metadata, error) {

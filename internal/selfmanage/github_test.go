@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -64,41 +65,49 @@ func TestManifestSourceUsesAndValidatesExplicitVersion(t *testing.T) {
 	}
 }
 
-func TestDefaultReleaseSourceUsesAPIOnlyForLatestPrerelease(t *testing.T) {
+func TestManifestSourceResolvesPrereleasePointerWithoutAPI(t *testing.T) {
+	manifest, _ := releasemanifest.New("v2.0.1")
+	data, _ := releasemanifest.Marshal(manifest)
+	var requested string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = r.URL.Path
+		_, _ = w.Write(data)
+	}))
+	defer server.Close()
+
+	releases, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases"}).Releases(context.Background())
+	if err != nil || requested != "/releases/download/pre-release/release-manifest.json" || !releases[0].Prerelease {
+		t.Fatalf("releases=%+v requested=%q err=%v", releases, requested, err)
+	}
+}
+
+func TestManifestSourceTreatsMissingPrereleasePointerAsNoUpdate(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	_, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases"}).Releases(context.Background())
+	if !errors.Is(err, ErrNoPrerelease) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestDefaultReleaseSourceUsesManifestsForEveryChannel(t *testing.T) {
 	client := &http.Client{}
 	tests := []struct {
-		options UpdateOptions
-		wantAPI bool
+		options        UpdateOptions
+		wantPrerelease bool
 	}{
 		{UpdateOptions{}, false},
 		{UpdateOptions{Version: "v2.0.0"}, false},
-		{UpdateOptions{Version: "v2.1.0-rc.1", Prerelease: true}, false},
+		{UpdateOptions{Version: "v2.1.0", Prerelease: true}, false},
 		{UpdateOptions{Prerelease: true}, true},
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("%+v", test.options), func(t *testing.T) {
-			_, isAPI := defaultReleaseSource(test.options, "linux", "amd64", client).(GitHubSource)
-			if isAPI != test.wantAPI {
-				t.Fatalf("isAPI=%t, want %t", isAPI, test.wantAPI)
+			source := defaultReleaseSource(test.options, "linux", "amd64", client).(ManifestSource)
+			if source.Prerelease != test.wantPrerelease {
+				t.Fatalf("prerelease=%t, want %t", source.Prerelease, test.wantPrerelease)
 			}
 		})
-	}
-}
-
-func TestGitHubSourceUsesOptionalToken(t *testing.T) {
-	t.Setenv("GH_TOKEN", "test-token")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
-			t.Errorf("Authorization=%q", got)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[]`))
-	}))
-	defer server.Close()
-
-	_, err := (GitHubSource{GOOS: "linux", GOARCH: "amd64", Client: server.Client(), APIURL: server.URL}).Releases(context.Background())
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 

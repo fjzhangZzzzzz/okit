@@ -1,171 +1,53 @@
 # 发布规范
 
-Go 版本使用 GitHub Actions 和 GoReleaser 发布。GoReleaser 只消费已存在的 Git
-tag，不负责决定或创建版本号。
+## 开发与版本
 
-## 版本与触发
+项目采用 `main` 单分支开发。每次提交必须先通过 CI 的构建与测试；未通过 CI 的提交不得生成发布制品。
 
-- 遵循语义化版本，tag 格式为 `vMAJOR.MINOR.PATCH`。
-- 预发布使用 `vMAJOR.MINOR.PATCH-rc.N`。
-- tag 必须指向已通过 Linux/Windows CI 的提交。
-- 正式版本 tag 必须与一个已通过发布冒烟的同版本 RC tag 指向同一提交。
-- 正式发布使用 GitHub Release，不再发布到 PyPI。
+版本使用 `vMAJOR.MINOR.PATCH`。每个版本 tag 与 Release 均不可复用，且必须指向已经通过 CI 的 `main` 提交。
+
+## GitHub Release 双通道
+
+GitHub Release 的 label 是发布的唯一人工入口：
+
+- `pre-release`：预发布通道。维护者可频繁创建，用于日常安装、升级和验证。
+- `latest`：正式通道。仅当预发布版本已验证并达到阶段性目标时设置；它必须沿用同一 tag、commit 和制品，不重新构建。
+- `none`：不参与默认通道，只能用精确版本安装或升级。
+
+发布工作流由 Release label 事件触发。创建 `pre-release` 后，工作流重新执行构建、测试和发布；全部成功后才上传 `release-manifest.json` 到固定的 `pre-release` 指针 Release。将该 Release 改为 `latest` 时，工作流仅清理指针，不重建制品。若当前没有预发布版本，预发布指针不存在。
+
+正式与预发布实际制品都保留在各自版本的 Release 中。只有通道指针是可变的；它始终在制品、校验和和发布清单完成后最后更新。
+
+## 无 Token 的安装与升级
+
+公开客户端不调用 GitHub REST Releases API，以避免共享出口 IP 的匿名限流；不要求用户设置 GitHub access token。
+
+固定下载入口如下：
+
+```text
+正式通道：releases/latest/download/release-manifest.json
+预发布通道：releases/download/pre-release/release-manifest.json
+精确版本：releases/download/<tag>/release-manifest.json
+```
+
+`okit upgrade` 的规则：
+
+```text
+okit upgrade                 # 更新到最新正式版
+okit upgrade --prerelease    # 更新到当前预发布版本
+okit upgrade --version vX.Y.Z # 更新到指定已发布版本，可用于回退
+```
+
+默认更新拒绝降级；指定版本允许安装任意已发布的正式或预发布版本。预发布指针不存在时，`--prerelease` 成功返回“当前没有可用预发布版本”。安装元数据的通道由 Release label 决定，不能由版本号后缀推断。
 
 ## 发布产物
 
-最低目标矩阵：
+每个实际 Release 必须包含 Linux/Windows、amd64/arm64 的归档，及 `checksums.txt`、`release-manifest.json`、`install.sh` 和 `install.ps1`。安装和升级都必须验证校验和；二进制显示的版本、commit 与 manifest 必须一致。
 
-| 系统 | 架构 | 格式 |
-| --- | --- | --- |
-| Linux | amd64、arm64 | `.tar.gz` |
-| Windows | amd64、arm64 | `.zip` |
+## 操作步骤
 
-每次 Release 必须包含以下独立资产：
-
-- 各目标平台的版本化压缩包；
-- `checksums.txt`；
-- `release-manifest.json`；
-- `install.sh`；
-- `install.ps1`。
-
-安装脚本是正式发布产物，而不只是仓库中的开发辅助脚本。GoReleaser 发布流程从
-`scripts/` 取得脚本并以固定资产名上传，使 `releases/latest/download/` 地址长期
-稳定。发布同时生成变更说明并包含许可证文件。二进制通过构建参数注入版本、提交号
-和构建时间，`okit --version` 必须能够显示这些信息。
-
-`release-manifest.json` 使用固定资产名，记录 tag、校验和文件名以及各系统架构对应的
-版本化压缩包。最新版通过 `releases/latest/download/release-manifest.json` 获取，
-固定版本通过 `releases/download/<tag>/release-manifest.json` 获取。公开安装流程不得
-调用 GitHub REST Releases API，避免共享出口 IP 的未认证限流。
-
-安装脚本必须写入 `$OKIT_HOME/install.json`（默认 `~/.okit/install.json`），记录
-版本、安装方式、可执行文件路径、
-发布通道以及由安装器添加的 PATH 项。`okit upgrade` 使用同一组压缩包和
-`checksums.txt`，不维护第二套更新产物。
-
-## 自动流程
-
-1. 为待发布提交创建 RC tag；
-2. 运行格式化检查、静态检查和 `go test ./...`；
-3. 根据 RC tag 生成并校验 `release-manifest.json`；
-4. 使用 GoReleaser 构建 RC、归档并生成校验和；
-5. 在干净的 Linux/Windows 环境从上一稳定版执行 `okit upgrade`，并验证安装和卸载；
-6. 两个平台均通过后，为 RC 上传 `release-validation.json` 验证标记；
-7. 在同一提交创建正式版本 tag；工作流确认对应 RC、提交和验证标记后才允许发布；
-8. 为正式 tag 重新构建带正式版本号的产物并再次执行 Linux/Windows 生命周期冒烟；
-9. 正式版本通过后，清理同版本 RC 的 Release 和 tag。
-
-工作流调用仓库中的 `scripts/smoke-release-lifecycle.sh` 和
-`scripts/smoke-release-lifecycle.ps1`，避免 Linux 与 Windows 的生命周期校验逻辑只存在于工作流内。
-它们复用 `smoke-runtime-*` 脚本验证最终安装产物；普通 CI 也使用相同脚本验证源码构建产物。
-冒烟失败必须显示测试阶段、二进制路径、期望版本和 `okit --version` 的实际输出。
-
-生命周期冒烟只使用最新命令 `okit upgrade`，不回退到已删除的 `okit self update`。
-升级源的顶层命令列表不包含 `upgrade` 时，脚本必须在执行升级前明确失败。`v2.2.2`
-是新生命周期命令的起始版本：`v2.2.1` 及更早版本不能作为升级源，用户必须重新安装；
-`v2.2.3` 是首个验证 `v2.2.2 -> v2.2.3` 升级链路的正式版本。
-
-运行时冒烟不执行安装、升级或卸载，可直接验证本地构建：
-
-```sh
-go build -o ./okit-runtime ./cmd/okit
-sh scripts/smoke-runtime-linux.sh --executable ./okit-runtime --version dev
-```
-
-```powershell
-go build -o ./okit-runtime.exe ./cmd/okit
-scripts/smoke-runtime-windows.ps1 -Executable ./okit-runtime.exe -Version dev
-bash scripts/smoke-runtime-windows-git-bash.sh --executable ./okit-runtime.exe --version dev
-```
-
-## 本地冒烟测试
-
-发布前可对本地构建执行版本、帮助、核心命令及卸载生命周期检查。测试使用临时目录，
-不会修改用户现有的 `OKIT_HOME` 或安装目录：
-
-Linux：
-
-```sh
-go build -ldflags "-X main.version=v2.0.0" -o ./okit-smoke ./cmd/okit
-sh scripts/smoke-release-lifecycle.sh --binary ./okit-smoke --version v2.0.0
-```
-
-Windows PowerShell：
-
-```powershell
-go build -ldflags "-X main.version=v2.0.0" -o ./okit-smoke.exe ./cmd/okit
-scripts/smoke-release-lifecycle.ps1 -Mode binary -Binary ./okit-smoke.exe -Version v2.0.0
-```
-
-对已经发布的版本运行完整下载安装和跨版本升级检查：
-
-```sh
-sh scripts/smoke-release-lifecycle.sh --release --version v2.0.0
-```
-
-```powershell
-scripts/smoke-release-lifecycle.ps1 -Mode release -Version v2.0.0
-```
-
-release 模式需要 GitHub CLI 和网络访问；binary 模式不验证 GitHub Release 上传环节。
-
-## 安装入口
-
-产品对外提供以下稳定命令：
-
-Linux：
-
-```sh
-curl -fsSL https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.sh | sh -s -- --version v1.2.3
-```
-
-Windows PowerShell：
-
-```powershell
-& ([scriptblock]::Create((irm https://github.com/fjzhangZzzzzz/okit/releases/latest/download/install.ps1))) -Version v1.2.3
-```
-
-- `install.sh` 下载匹配 Linux 架构的压缩包，验证校验和后安装。
-- `install.ps1` 完成等价的 Windows 下载、校验和安装流程。
-- 安装器通过固定名称 manifest 解析最新版，不依赖 GitHub REST API 或用户 Token。
-- 安装脚本默认安装到用户可写目录，不隐式请求管理员权限。
-- 安装脚本必须支持固定版本；`latest` 只能解析最新正式版本，不选择预发布。
-- 固定版本通过安装器参数选择：Linux 使用 `--version vMAJOR.MINOR.PATCH`，
-  PowerShell 使用 `-Version vMAJOR.MINOR.PATCH`。
-- 包含预发布标识的版本写入 `channel: prerelease`；正式版本写入
-  `channel: stable`。
-- 脚本不得要求系统预装 Go、Python、uv 或 GoReleaser。
-- 安装目录不在 PATH 时，脚本只添加自身的用户级目录或给出明确提示，不覆盖既有
-  PATH 内容。
-
-安装、升级和卸载应保持幂等，不修改与 `okit` 无关的 PATH 条目或文件。未来可在
-GitHub Release 稳定后增加 Scoop、WinGet、deb 或 rpm，但不作为首个版本的阻塞项。
-通过包管理器安装时，`okit` 不接管升级或卸载，必须提示用户使用原包管理器。
-
-## 预发布与清理
-
-- `vMAJOR.MINOR.PATCH-rc.N` 发布为 GitHub Pre-release，用于真实安装和升级验收。
-- `okit upgrade --prerelease` 允许选择预发布版本；精确升级使用
-  `okit upgrade --version vMAJOR.MINOR.PATCH-rc.N`。
-- RC 只有在 Linux 和 Windows 生命周期冒烟均通过后才会获得
-  `release-validation.json`；没有该标记的 RC 不得用于正式发布。
-- 正式版本必须与已验证的同版本 RC 指向同一提交。RC 资产不能直接改名为正式资产，
-  因为二进制版本、manifest 和文件名均包含 tag；正式版本必须从同一提交重新构建。
-- RC 与正式 tag 指向同一提交时，工作流必须通过 `GORELEASER_CURRENT_TAG` 显式传入
-  当前触发 tag，不能依赖 GoReleaser 对同一提交多个 tag 的默认排序。
-- 对应正式版本 `vMAJOR.MINOR.PATCH` 发布并完成 Linux/Windows 生命周期烟测后，
-  工作流立即删除所有 `vMAJOR.MINOR.PATCH-rc.N` GitHub Release 及其 tag。
-
-## 发布前检查
-
-- tag 与 `okit --version` 一致；
-- 所有目标压缩包均包含单个可执行文件、README 和 LICENSE；
-- 校验和可验证；
-- Release 中存在固定名称的 `install.sh` 和 `install.ps1`；
-- Release 中存在合法的 `release-manifest.json`，且列出的资产全部存在；
-- README 中的一键安装命令能够从 Release 资产完成全新安装和升级；
-- 安装脚本拒绝校验和不匹配的压缩包；
-- 从上一稳定版自升级成功，损坏产物和中断场景能够回滚；
-- 默认卸载保留用户数据，`--purge` 仅删除经过验证的 `OKIT_HOME`；
-- `--help`、`upgrade --help`、`uninstall --help` 的只读冒烟测试通过；
-- MobaXterm 命令只包含在 Windows 可执行文件的可用路径中。
+1. 将变更提交并推送到 `main`，确认 CI 通过。
+2. 在 GitHub Releases 界面为该 commit 创建新 tag 与 Release，并选择 `pre-release`。
+3. 等待发布工作流构建、测试、上传制品和更新预发布指针；在预发布环境验证核心使用路径。
+4. 验证完成且达到阶段性目标时，在同一 Release 中将 label 设为 `latest`。
+5. 若回归，提交修复或发布一个更高版本；也可用 `okit upgrade --version` 安装已验证版本。不得改写已有版本 tag 或制品。
