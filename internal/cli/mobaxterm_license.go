@@ -157,16 +157,6 @@ func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 	return command
 }
 
-func themeStatus(dryRun, changed bool) string {
-	if dryRun {
-		return "planned"
-	}
-	if changed {
-		return "updated"
-	}
-	return "unchanged"
-}
-
 func plannedOrCompleted(dryRun bool) string {
 	if dryRun {
 		return "planned"
@@ -180,10 +170,6 @@ func readLicenseArgument(value string) (string, error) {
 	}
 	return value, nil
 }
-
-func mobaThemeApplyPrompt() string { return "要应用选定的 MobaXterm 主题吗？" }
-
-func mobaThemeRestorePrompt() string { return "要还原 MobaXterm 配置备份吗？" }
 
 func mobaLicenseDeployPrompt(plan string) string {
 	return "要部署 MobaXterm 许可证文件吗？ " + mobaLicenseDeploymentSummary(plan)

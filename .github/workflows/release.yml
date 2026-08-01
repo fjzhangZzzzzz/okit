@@ -29,7 +29,7 @@ jobs:
           go test ./...
           go vet ./...
       - name: 生成发布清单
-        run: go run ./cmd/releasemanifest --version "${{ github.event.release.tag_name }}" --output .release/release-manifest.json
+        run: go run ./cmd/release-manifest --version "${{ github.event.release.tag_name }}" --output .release/release-manifest.json
       - name: 构建并上传预发布制品
         uses: goreleaser/goreleaser-action@v7
         with:

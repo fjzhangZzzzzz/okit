@@ -1,4 +1,4 @@
-package releasecontract
+package release
 
 import (
 	"os"

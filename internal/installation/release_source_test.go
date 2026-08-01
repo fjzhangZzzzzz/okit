@@ -14,12 +14,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fjzhangZzzzzz/okit/internal/releasemanifest"
+	"github.com/fjzhangZzzzzz/okit/internal/release"
 )
 
 func TestManifestSourceResolvesLatestWithoutAPI(t *testing.T) {
-	manifest, _ := releasemanifest.New("v2.0.0")
-	data, _ := releasemanifest.Marshal(manifest)
+	manifest, _ := release.NewManifest("v2.0.0")
+	data, _ := release.MarshalManifest(manifest)
 	var requested string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requested = r.URL.Path
@@ -48,8 +48,8 @@ func TestManifestSourceResolvesLatestWithoutAPI(t *testing.T) {
 }
 
 func TestManifestSourceUsesAndValidatesExplicitVersion(t *testing.T) {
-	manifest, _ := releasemanifest.New("v2.0.1")
-	data, _ := releasemanifest.Marshal(manifest)
+	manifest, _ := release.NewManifest("v2.0.1")
+	data, _ := release.MarshalManifest(manifest)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/releases/download/v2.0.0/release-manifest.json" {
 			t.Errorf("requested %q", r.URL.Path)
@@ -66,8 +66,8 @@ func TestManifestSourceUsesAndValidatesExplicitVersion(t *testing.T) {
 }
 
 func TestManifestSourceResolvesPrereleasePointerWithoutAPI(t *testing.T) {
-	manifest, _ := releasemanifest.New("v2.0.1")
-	data, _ := releasemanifest.Marshal(manifest)
+	manifest, _ := release.NewManifest("v2.0.1")
+	data, _ := release.MarshalManifest(manifest)
 	var requested string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requested = r.URL.Path
@@ -123,8 +123,8 @@ func TestLifecycleDownloadsManifestAssetAndChecksums(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(archive.Bytes())
-	manifest, _ := releasemanifest.New("v2.0.0")
-	manifestData, _ := releasemanifest.Marshal(manifest)
+	manifest, _ := release.NewManifest("v2.0.0")
+	manifestData, _ := release.MarshalManifest(manifest)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

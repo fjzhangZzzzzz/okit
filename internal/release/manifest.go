@@ -1,4 +1,4 @@
-package releasemanifest
+package release
 
 import (
 	"encoding/json"
@@ -23,22 +23,15 @@ type Manifest struct {
 	Assets    map[string]string `json:"assets"`
 }
 
-func New(version string) (Manifest, error) {
+func NewManifest(version string) (Manifest, error) {
 	if err := ValidateVersion(version); err != nil {
 		return Manifest{}, err
 	}
 	plain := strings.TrimPrefix(version, "v")
-	return Manifest{
-		Schema:    Schema,
-		Version:   version,
-		Checksums: "checksums.txt",
-		Assets: map[string]string{
-			"linux-amd64":   fmt.Sprintf("okit_%s_linux_amd64.tar.gz", plain),
-			"linux-arm64":   fmt.Sprintf("okit_%s_linux_arm64.tar.gz", plain),
-			"windows-amd64": fmt.Sprintf("okit_%s_windows_amd64.zip", plain),
-			"windows-arm64": fmt.Sprintf("okit_%s_windows_arm64.zip", plain),
-		},
-	}, nil
+	return Manifest{Schema: Schema, Version: version, Checksums: "checksums.txt", Assets: map[string]string{
+		"linux-amd64": fmt.Sprintf("okit_%s_linux_amd64.tar.gz", plain), "linux-arm64": fmt.Sprintf("okit_%s_linux_arm64.tar.gz", plain),
+		"windows-amd64": fmt.Sprintf("okit_%s_windows_amd64.zip", plain), "windows-arm64": fmt.Sprintf("okit_%s_windows_arm64.zip", plain),
+	}}, nil
 }
 
 func ValidateVersion(version string) error {
@@ -47,8 +40,7 @@ func ValidateVersion(version string) error {
 	}
 	return nil
 }
-
-func Parse(data []byte, expectedVersion string) (Manifest, error) {
+func ParseManifest(data []byte, expectedVersion string) (Manifest, error) {
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return Manifest{}, fmt.Errorf("parse release manifest: %w", err)
@@ -58,7 +50,6 @@ func Parse(data []byte, expectedVersion string) (Manifest, error) {
 	}
 	return manifest, nil
 }
-
 func (m Manifest) Validate(expectedVersion string) error {
 	if m.Schema != Schema {
 		return fmt.Errorf("unsupported release manifest schema %d", m.Schema)
@@ -85,17 +76,14 @@ func (m Manifest) Validate(expectedVersion string) error {
 	}
 	return nil
 }
-
 func (m Manifest) Asset(goos, goarch string) (string, error) {
 	target := goos + "-" + goarch
-	name := m.Assets[target]
-	if name == "" {
-		return "", fmt.Errorf("release manifest has no asset for %s", target)
+	if name := m.Assets[target]; name != "" {
+		return name, nil
 	}
-	return name, nil
+	return "", fmt.Errorf("release manifest has no asset for %s", target)
 }
-
-func Marshal(manifest Manifest) ([]byte, error) {
+func MarshalManifest(manifest Manifest) ([]byte, error) {
 	if err := manifest.Validate(""); err != nil {
 		return nil, err
 	}
@@ -105,9 +93,8 @@ func Marshal(manifest Manifest) ([]byte, error) {
 	}
 	return append(data, '\n'), nil
 }
-
 func validateFilename(name string) error {
-	if !assetPattern.MatchString(name) || filepath.Base(name) != name || strings.ContainsAny(name, `/\`) {
+	if !assetPattern.MatchString(name) || filepath.Base(name) != name || strings.ContainsAny(name, `/\\`) {
 		return fmt.Errorf("unsafe filename %q", name)
 	}
 	return nil

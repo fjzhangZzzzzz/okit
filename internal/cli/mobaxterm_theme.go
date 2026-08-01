@@ -218,3 +218,15 @@ func newMobaThemeCacheAction(action, description string, global *globalOptions) 
 
 func mobaThemeCache(home string) string   { return filepath.Join(home, "cache", "mobaxterm", "themes") }
 func mobaThemeBackups(home string) string { return filepath.Join(home, "backups", "mobaxterm") }
+
+func themeStatus(dryRun, changed bool) string {
+	if dryRun {
+		return "planned"
+	}
+	if changed {
+		return "updated"
+	}
+	return "unchanged"
+}
+func mobaThemeApplyPrompt() string   { return "要应用选定的 MobaXterm 主题吗？" }
+func mobaThemeRestorePrompt() string { return "要还原 MobaXterm 配置备份吗？" }

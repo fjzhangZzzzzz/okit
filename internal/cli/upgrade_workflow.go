@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/http"
-	"runtime"
-	"time"
 
 	"github.com/fjzhangZzzzzz/okit/internal/installation"
 	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
@@ -95,24 +92,7 @@ func (w upgradeWorkflow) Run(ctx context.Context) (upgradeResult, error) {
 }
 
 func (w upgradeWorkflow) runner() (upgradeRunner, error) {
-	if w.app.upgradeRunner != nil {
-		return w.app.upgradeRunner, nil
-	}
-	home, executable, err := selfPaths()
-	if err != nil {
-		return nil, err
-	}
-	return installation.NewLifecycle(installation.Dependencies{
-		CurrentVersion: w.app.version,
-		Executable:     executable,
-		OKITHome:       home,
-		Source: installation.ManifestSource{
-			GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Version: w.options.version,
-			Prerelease: w.options.prerelease && w.options.version == "", Client: &http.Client{Timeout: 30 * time.Second},
-		},
-		Downloader: installation.HTTPDownloader{Client: &http.Client{Timeout: 2 * time.Minute}},
-		Replace:    installation.PlatformReplace,
-	}), nil
+	return w.app.newInstallationRuntime().upgradeRunner(w.options)
 }
 
 func (w upgradeWorkflow) mode() string {

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fjzhangZzzzzz/okit/internal/releasemanifest"
+	"github.com/fjzhangZzzzzz/okit/internal/release"
 )
 
 func main() {
@@ -17,12 +17,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "必须指定 --output")
 		os.Exit(2)
 	}
-	manifest, err := releasemanifest.New(*version)
+	manifest, err := release.NewManifest(*version)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	data, err := releasemanifest.Marshal(manifest)
+	data, err := release.MarshalManifest(manifest)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

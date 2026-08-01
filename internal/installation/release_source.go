@@ -7,8 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/fjzhangZzzzzz/okit/internal/releasechannel"
-	"github.com/fjzhangZzzzzz/okit/internal/releasemanifest"
+	"github.com/fjzhangZzzzzz/okit/internal/release"
 )
 
 const (
@@ -32,11 +31,11 @@ func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
 		base = defaultReleaseBaseURL
 	}
 	if s.Version != "" {
-		if err := releasemanifest.ValidateVersion(s.Version); err != nil {
+		if err := release.ValidateVersion(s.Version); err != nil {
 			return nil, err
 		}
 	}
-	manifestURL := releasechannel.Join(base, releasechannel.Request{Version: s.Version, IncludePrerelease: s.Prerelease && s.Version == ""})
+	manifestURL := s.manifestURL(base)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
 	if err != nil {
 		return nil, err
@@ -57,7 +56,7 @@ func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	manifest, err := releasemanifest.Parse(data, s.Version)
+	manifest, err := release.ParseManifest(data, s.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -73,4 +72,14 @@ func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
 		AssetURL:     downloadBase + "/" + asset,
 		ChecksumsURL: downloadBase + "/" + manifest.Checksums,
 	}}, nil
+}
+
+func (s ManifestSource) manifestURL(base string) string {
+	if s.Version != "" {
+		return base + "/download/" + s.Version + "/release-manifest.json"
+	}
+	if s.Prerelease {
+		return base + "/download/pre-release/release-manifest.json"
+	}
+	return base + "/latest/download/release-manifest.json"
 }
