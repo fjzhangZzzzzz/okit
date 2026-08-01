@@ -19,11 +19,11 @@ func TestUpgradeWorkflowReturnsStableStatusMatrix(t *testing.T) {
 	}{
 		{name: "development build", app: New("dev"), wantMode: "apply", wantStatus: upgradeStatusUnsupported},
 		{name: "invalid installation", app: NewBuildMode("broken", "", "", BuildModeRelease), wantMode: "apply", wantStatus: upgradeStatusInvalidInstallation},
-		{name: "check available", app: New("v1.0.0"), options: upgradeOptions{check: true}, lifecycle: installation.Result{Current: "v1.0.0", Available: "v1.1.0"}, needsRunner: true, wantMode: "check", wantStatus: upgradeStatusAvailable},
-		{name: "dry run", app: New("v1.0.0"), options: upgradeOptions{dryRun: true}, lifecycle: installation.Result{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update"}, needsRunner: true, wantMode: "dry_run", wantStatus: upgradeStatusPlanned},
-		{name: "apply", app: New("v1.0.0"), lifecycle: installation.Result{Current: "v1.0.0", Available: "v1.1.0", Updated: true}, needsRunner: true, wantMode: "apply", wantStatus: upgradeStatusApplied},
-		{name: "scheduled", app: New("v1.0.0"), lifecycle: installation.Result{Current: "v1.0.0", Available: "v1.1.0", Updated: true, Scheduled: true}, needsRunner: true, wantMode: "apply", wantStatus: upgradeStatusScheduled},
-		{name: "up to date", app: New("v1.0.0"), lifecycle: installation.Result{Current: "v1.0.0", Available: "v1.0.0"}, needsRunner: true, wantMode: "apply", wantStatus: upgradeStatusUpToDate},
+		{name: "check available", app: New("v1.0.0"), options: upgradeOptions{check: true}, lifecycle: installation.Result{Status: installation.StatusAvailable, Current: "v1.0.0", Available: "v1.1.0"}, needsRunner: true, wantMode: "check", wantStatus: upgradeStatusAvailable},
+		{name: "dry run", app: New("v1.0.0"), options: upgradeOptions{dryRun: true}, lifecycle: installation.Result{Status: installation.StatusPlanned, Current: "v1.0.0", Available: "v1.1.0", Plan: "would update"}, needsRunner: true, wantMode: "dry_run", wantStatus: upgradeStatusPlanned},
+		{name: "apply", app: New("v1.0.0"), lifecycle: installation.Result{Status: installation.StatusApplied, Current: "v1.0.0", Available: "v1.1.0"}, needsRunner: true, wantMode: "apply", wantStatus: upgradeStatusApplied},
+		{name: "scheduled", app: New("v1.0.0"), lifecycle: installation.Result{Status: installation.StatusScheduled, Current: "v1.0.0", Available: "v1.1.0"}, needsRunner: true, wantMode: "apply", wantStatus: upgradeStatusScheduled},
+		{name: "up to date", app: New("v1.0.0"), lifecycle: installation.Result{Status: installation.StatusUpToDate, Current: "v1.0.0", Available: "v1.0.0"}, needsRunner: true, wantMode: "apply", wantStatus: upgradeStatusUpToDate},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

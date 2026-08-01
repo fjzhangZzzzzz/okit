@@ -15,6 +15,13 @@ type uninstallWorkflow struct {
 	options installation.UninstallOptions
 }
 
+type uninstallMachineResult struct {
+	SchemaVersion int      `json:"schema_version"`
+	Status        string   `json:"status"`
+	Targets       []string `json:"targets"`
+	Purge         bool     `json:"purge"`
+}
+
 func (a *App) newUninstallWorkflow(options installation.UninstallOptions) uninstallWorkflow {
 	return uninstallWorkflow{runtime: a.newInstallationRuntime(), options: options}
 }
@@ -25,7 +32,7 @@ func (w uninstallWorkflow) Run(stdin io.Reader, presenter *clioutput.Presenter) 
 		}
 		answer, _ := bufio.NewReader(stdin).ReadString('\n')
 		if answer = strings.TrimSpace(strings.ToLower(answer)); answer != "y" && answer != "yes" {
-			return clioutput.View{Human: clioutput.Document{Title: "已取消卸载", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}}, nil
+			return clioutput.View{Human: clioutput.Document{Title: "已取消卸载", Summary: "未作任何更改。"}, Machine: uninstallMachineResult{SchemaVersion: 1, Status: "cancelled", Purge: w.options.Purge}}, nil
 		}
 		w.options.Yes = true
 	}
@@ -48,7 +55,7 @@ func (w uninstallWorkflow) Run(stdin io.Reader, presenter *clioutput.Presenter) 
 		title = "卸载计划"
 		summary = "未作任何更改。"
 	}
-	return clioutput.View{Human: clioutput.Document{Title: title, Plan: items, Summary: summary}, Machine: map[string]any{"status": uninstallStatus(w.options.DryRun, result.Scheduled), "targets": result.Plan, "purge": w.options.Purge}}, nil
+	return clioutput.View{Human: clioutput.Document{Title: title, Plan: items, Summary: summary}, Machine: uninstallMachineResult{SchemaVersion: 1, Status: uninstallStatus(w.options.DryRun, result.Scheduled), Targets: result.Plan, Purge: w.options.Purge}}, nil
 }
 func uninstallAction(dryRun, scheduled bool) string {
 	if dryRun {

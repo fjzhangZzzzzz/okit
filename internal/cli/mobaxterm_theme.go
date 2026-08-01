@@ -82,8 +82,8 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 				return runError(err)
 			}
 			presenter := newPresenter(cmd, global)
-			if needsMobaConfirmation(dryRun, force) && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeApplyPrompt()) {
-				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消应用主题", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
+			if !confirmMobaAction(cmd.InOrStdin(), presenter, dryRun, force, mobaThemeApplyPrompt()) {
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消应用主题", Summary: "未作任何更改。"}, Machine: mobaThemeApplyResult{mobaActionResult: newMobaActionResult("theme_apply", "cancelled", false, false), Theme: args[0], ConfigPath: selected.candidate.ConfigPath}})
 			}
 			var result theme.Result
 			if noBackup {
@@ -104,7 +104,7 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 			}
 			return presenter.Render(clioutput.View{
 				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "主题", Value: args[0]}, {Label: "配置文件", Value: selected.candidate.ConfigPath}, {Label: "备份", Value: result.BackupPath}}, Summary: summary},
-				Machine: map[string]any{"status": themeStatus(dryRun, result.Changed), "theme": args[0], "config_path": selected.candidate.ConfigPath, "backup_path": result.BackupPath, "changed": result.Changed},
+				Machine: mobaThemeApplyResult{mobaActionResult: newMobaActionResult("theme_apply", themeStatus(dryRun, result.Changed), result.Changed, dryRun), Theme: args[0], ConfigPath: selected.candidate.ConfigPath, BackupPath: result.BackupPath},
 			})
 		},
 	}
@@ -135,8 +135,8 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 				}
 			}
 			presenter := newPresenter(cmd, global)
-			if needsMobaConfirmation(dryRun, force) && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeRestorePrompt()) {
-				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消还原主题", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
+			if !confirmMobaAction(cmd.InOrStdin(), presenter, dryRun, force, mobaThemeRestorePrompt()) {
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消还原主题", Summary: "未作任何更改。"}, Machine: mobaThemeRestoreResult{mobaActionResult: newMobaActionResult("theme_restore", "cancelled", false, false), BackupPath: selected, ConfigPath: selectedInstallation.candidate.ConfigPath}})
 			}
 			if err := theme.Restore(selectedInstallation.candidate.ConfigPath, selected, dryRun); err != nil {
 				return runError(err)
@@ -149,7 +149,7 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 			}
 			return presenter.Render(clioutput.View{
 				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "备份", Value: selected}, {Label: "配置文件", Value: selectedInstallation.candidate.ConfigPath}}, Summary: summary},
-				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "backup_path": selected, "config_path": selectedInstallation.candidate.ConfigPath},
+				Machine: mobaThemeRestoreResult{mobaActionResult: newMobaActionResult("theme_restore", plannedOrCompleted(dryRun), !dryRun, dryRun), BackupPath: selected, ConfigPath: selectedInstallation.candidate.ConfigPath},
 			})
 		},
 	}
@@ -197,7 +197,7 @@ func newMobaThemeCacheAction(action, description string, global *globalOptions) 
 				if !exists {
 					document.Hint = "请运行 `okit mobaxterm theme cache update` 初始化缓存。"
 				}
-				return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: map[string]any{"exists": exists, "path": cachePath, "modified": modified}})
+				return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: mobaCacheResult{SchemaVersion: 1, Path: cachePath, Exists: exists, Modified: modified}})
 			}
 			if err != nil {
 				return runError(err)
@@ -210,7 +210,7 @@ func newMobaThemeCacheAction(action, description string, global *globalOptions) 
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
 				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "路径", Value: cachePath}}},
-				Machine: map[string]any{"status": status, "path": cachePath},
+				Machine: mobaCacheResult{SchemaVersion: 1, Status: status, Path: cachePath},
 			})
 		},
 	}

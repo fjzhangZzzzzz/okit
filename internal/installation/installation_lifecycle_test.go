@@ -49,7 +49,7 @@ func TestScheduledWindowsHelperKeepsStagedFiles_SELF006(t *testing.T) {
 		},
 	})
 	result, err := lifecycle.Run(context.Background(), Intent{}, nil)
-	if err != nil || !result.Scheduled {
+	if err != nil || result.Status != StatusScheduled {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if _, err := os.Stat(staged); err != nil {
@@ -307,7 +307,7 @@ func TestUpToDateCheckIsSuccessful_SELF001(t *testing.T) {
 		Source:         &fakeSource{releases: []Release{{Version: "v1.0.0"}}},
 	})
 	result, err := lifecycle.Run(context.Background(), Intent{Mode: ModeCheck}, nil)
-	if err != nil || result.Current != "v1.0.0" || result.Available != "v1.0.0" || result.Updated {
+	if err != nil || result.Current != "v1.0.0" || result.Available != "v1.0.0" || result.Status != StatusUpToDate {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

@@ -89,6 +89,7 @@ type Status uint8
 const (
 	StatusUpToDate Status = iota
 	StatusAvailable
+	StatusPlanned
 	StatusApplied
 	StatusScheduled
 )
@@ -98,8 +99,6 @@ type Result struct {
 	Status    Status
 	Current   string
 	Available string
-	Updated   bool
-	Scheduled bool
 	Plan      string
 }
 
@@ -169,7 +168,11 @@ func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressRep
 		return Result{}, err
 	}
 	result := Result{Status: StatusAvailable, Current: u.CurrentVersion, Available: release.Version, Plan: fmt.Sprintf("would update %s to %s", u.CurrentVersion, release.Version)}
-	if intent.Mode == ModeCheck || intent.Mode == ModeDryRun {
+	if intent.Mode == ModeCheck {
+		return result, nil
+	}
+	if intent.Mode == ModeDryRun {
+		result.Status = StatusPlanned
 		return result, nil
 	}
 	if u.Downloader == nil || u.Replace == nil {
@@ -220,7 +223,6 @@ func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressRep
 			return Result{}, err
 		}
 	}
-	result.Updated, result.Scheduled = true, scheduled
 	if scheduled {
 		result.Status = StatusScheduled
 	} else {

@@ -172,7 +172,7 @@ func TestLifecycleDownloadsManifestAssetAndChecksums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Updated || result.Available != "v2.0.0" || !replaced {
+	if result.Status != StatusApplied || result.Available != "v2.0.0" || !replaced {
 		t.Fatalf("result=%+v replaced=%t", result, replaced)
 	}
 }

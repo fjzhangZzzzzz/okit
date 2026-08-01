@@ -129,7 +129,7 @@ func TestSelfUpdateFallbackTitleIsChinese(t *testing.T) {
 
 func TestSelfUpdateDryRunUsesChinesePlanAndPreservesMachinePlan(t *testing.T) {
 	app := New("v1.0.0")
-	app.upgradeRunner = &fakeUpgradeRunner{result: installation.Result{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}}
+	app.upgradeRunner = &fakeUpgradeRunner{result: installation.Result{Status: installation.StatusPlanned, Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}}
 	var stdout, stderr bytes.Buffer
 	if code := app.Run([]string{"upgrade", "--dry-run"}, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -188,7 +188,7 @@ func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
 }
 
 func TestSelfUpdateScheduledHumanOutputExplainsWhenItTakesEffect(t *testing.T) {
-	runner := &fakeUpgradeRunner{result: installation.Result{Current: "v1.0.0", Available: "v1.1.0", Updated: true, Scheduled: true}}
+	runner := &fakeUpgradeRunner{result: installation.Result{Status: installation.StatusScheduled, Current: "v1.0.0", Available: "v1.1.0"}}
 	app := New("v1.0.0")
 	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer
@@ -207,7 +207,7 @@ func TestSelfUpdateScheduledHumanOutputExplainsWhenItTakesEffect(t *testing.T) {
 }
 
 func TestSelfUpdateAppliedHumanOutputShowsTargetOnly(t *testing.T) {
-	runner := &fakeUpgradeRunner{result: installation.Result{Current: "v1.0.0", Available: "v1.1.0", Updated: true}}
+	runner := &fakeUpgradeRunner{result: installation.Result{Status: installation.StatusApplied, Current: "v1.0.0", Available: "v1.1.0"}}
 	app := New("v1.0.0")
 	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer

@@ -118,21 +118,18 @@ func (w upgradeWorkflow) lifecycleMode() installation.Mode {
 
 func (w upgradeWorkflow) fromLifecycle(lifecycle installation.Result) upgradeResult {
 	result := upgradeResult{Mode: w.mode(), Current: lifecycle.Current, Target: lifecycle.Available, Plan: lifecycle.Plan}
-	available := lifecycle.Available != "" && lifecycle.Available != lifecycle.Current
-	switch {
-	case !available:
+	switch lifecycle.Status {
+	case installation.StatusUpToDate:
 		result.Status = upgradeStatusUpToDate
-	case w.options.dryRun:
+	case installation.StatusPlanned:
 		result.Status = upgradeStatusPlanned
-	case w.options.check:
+	case installation.StatusAvailable:
 		result.Status = upgradeStatusAvailable
 		result.NextAction = &upgradeNextAction{Kind: "run_upgrade", Command: []string{"okit", "upgrade"}}
-	case lifecycle.Scheduled:
+	case installation.StatusScheduled:
 		result.Status = upgradeStatusScheduled
-	case lifecycle.Updated:
+	case installation.StatusApplied:
 		result.Status = upgradeStatusApplied
-	default:
-		result.Status = upgradeStatusAvailable
 	}
 	return result
 }

@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/fjzhangZzzzzz/okit/internal/mobaxterm"
+	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 )
 
 // selectedMobaInstallation is the CLI workflow module for every mutating action.
@@ -34,3 +36,9 @@ func selectDefaultMobaInstallation(service mobaxterm.Service, home string) (sele
 }
 
 func needsMobaConfirmation(dryRun, force bool) bool { return !dryRun && !force }
+
+// confirmMobaAction is the CLI adapter for terminal confirmation. MobaXterm
+// action modules receive only an already-confirmed intent and never read a terminal.
+func confirmMobaAction(stdin io.Reader, presenter *clioutput.Presenter, dryRun, force bool, prompt string) bool {
+	return !needsMobaConfirmation(dryRun, force) || confirmAction(stdin, presenter, prompt)
+}

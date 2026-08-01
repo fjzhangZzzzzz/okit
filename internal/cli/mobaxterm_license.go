@@ -39,7 +39,7 @@ func newMobaLicenseGenerateCommand(global *globalOptions) *cobra.Command {
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
 				Human:   clioutput.Document{Title: "已生成 MobaXterm 许可证", Fields: []clioutput.Field{{Label: "输出文件", Value: output}, {Label: "用户名", Value: username}, {Label: "版本", Value: version}}},
-				Machine: map[string]any{"status": "created", "output": output, "username": username, "version": version},
+				Machine: mobaLicenseGenerateResult{SchemaVersion: 1, Status: "created", Output: output, Username: username, Version: version},
 			})
 		},
 	}
@@ -71,8 +71,8 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 				if err != nil {
 					return runError(err)
 				}
-				if !confirmAction(cmd.InOrStdin(), presenter, mobaLicenseDeployPrompt(plan)) {
-					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消部署许可证", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
+				if !confirmMobaAction(cmd.InOrStdin(), presenter, dryRun, force, mobaLicenseDeployPrompt(plan)) {
+					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消部署许可证", Summary: "未作任何更改。"}, Machine: mobaLicenseDeployResult{mobaActionResult: newMobaActionResult("license_deploy", "cancelled", false, false), Username: username, Version: version}})
 				}
 			}
 			result, err := selected.service.DeployLicenseTo(selected.candidate, username, version, dryRun)
@@ -87,7 +87,7 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 			}
 			return presenter.Render(clioutput.View{
 				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "用户名", Value: username}, {Label: "版本", Value: version}, {Label: "结果", Value: mobaLicenseDeploymentSummary(result)}}, Summary: summary},
-				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "username": username, "version": version, "result": result},
+				Machine: mobaLicenseDeployResult{mobaActionResult: newMobaActionResult("license_deploy", plannedOrCompleted(dryRun), !dryRun, dryRun), Username: username, Version: version, Result: result},
 			})
 		},
 	}
@@ -148,7 +148,7 @@ func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
 				Human:   clioutput.Document{Title: "MobaXterm 许可证有效。", Fields: []clioutput.Field{{Label: "用户名", Value: username}, {Label: "版本", Value: version}}},
-				Machine: map[string]any{"valid": true, "username": username, "version": version},
+				Machine: mobaLicenseVerifyResult{SchemaVersion: 1, Valid: true, Username: username, Version: version},
 			})
 		},
 	}
