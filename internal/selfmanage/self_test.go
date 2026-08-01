@@ -34,7 +34,7 @@ func TestScheduledWindowsHelperKeepsStagedFiles_SELF006(t *testing.T) {
 	}
 	digest := sha256.Sum256(archive.Bytes())
 	var staged string
-	updater := Updater{
+	lifecycle := NewLifecycle(Dependencies{
 		CurrentVersion: "v1.0.0",
 		Executable:     filepath.Join(root, "okit.exe"),
 		OKITHome:       home,
@@ -47,8 +47,8 @@ func TestScheduledWindowsHelperKeepsStagedFiles_SELF006(t *testing.T) {
 			staged = candidate
 			return true, nil
 		},
-	}
-	result, err := updater.Update(context.Background(), UpdateOptions{})
+	})
+	result, err := lifecycle.Run(context.Background(), Intent{}, nil)
 	if err != nil || !result.Scheduled {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -76,21 +76,21 @@ func (f fakeDownload) Download(_ context.Context, url string) ([]byte, error) {
 
 func TestReleaseSelection_SELF001_SELF002(t *testing.T) {
 	releases := []Release{{Version: "v1.3.0", Prerelease: true}, {Version: "v1.2.0"}, {Version: "v1.1.0"}}
-	selected, err := SelectRelease("v1.1.0", releases, UpdateOptions{})
+	selected, err := SelectRelease("v1.1.0", releases, Intent{})
 	if err != nil || selected.Version != "v1.2.0" {
 		t.Fatalf("selected=%+v err=%v", selected, err)
 	}
-	selected, err = SelectRelease("v1.2.0", releases, UpdateOptions{Prerelease: true})
+	selected, err = SelectRelease("v1.2.0", releases, Intent{IncludePrerelease: true})
 	if err != nil || selected.Version != "v1.3.0" {
 		t.Fatalf("prerelease selected=%+v err=%v", selected, err)
 	}
-	if _, err := SelectRelease("v1.2.0", releases, UpdateOptions{Version: "v1.1.0"}); err != nil {
+	if _, err := SelectRelease("v1.2.0", releases, Intent{Version: "v1.1.0"}); err != nil {
 		t.Fatalf("explicit downgrade rejected: %v", err)
 	}
-	if _, err := SelectRelease("v1.2.0", []Release{{Version: "v1.1.0"}}, UpdateOptions{}); err == nil {
+	if _, err := SelectRelease("v1.2.0", []Release{{Version: "v1.1.0"}}, Intent{}); err == nil {
 		t.Fatal("implicit downgrade accepted")
 	}
-	selected, err = SelectRelease("v1.2.0", []Release{{Version: "v1.3.0", Prerelease: true}, {Version: "v1.4.0", Prerelease: true}}, UpdateOptions{Prerelease: true})
+	selected, err = SelectRelease("v1.2.0", []Release{{Version: "v1.3.0", Prerelease: true}, {Version: "v1.4.0", Prerelease: true}}, Intent{IncludePrerelease: true})
 	if err != nil || selected.Version != "v1.4.0" {
 		t.Fatalf("semantic ordering selected=%+v err=%v", selected, err)
 	}
@@ -115,12 +115,12 @@ func TestChecksumOrDownloadFailureDoesNotReplace_SELF003(t *testing.T) {
 	}
 	source := &fakeSource{releases: []Release{{Version: "v1.1.0", AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}}
 	replaced := false
-	updater := Updater{CurrentVersion: "v1.0.0", Executable: executable, OKITHome: filepath.Join(dir, "home"), Source: source,
+	lifecycle := NewLifecycle(Dependencies{CurrentVersion: "v1.0.0", Executable: executable, OKITHome: filepath.Join(dir, "home"), Source: source,
 		Metadata:   &Metadata{Method: "official", Executable: executable},
 		Downloader: fakeDownload{data: map[string][]byte{"asset": []byte("broken"), "sum": []byte("deadbeef  okit.zip\n")}},
 		Replace:    func(string, string) (bool, error) { replaced = true; return false, nil },
-	}
-	if _, err := updater.Update(context.Background(), UpdateOptions{}); err == nil {
+	})
+	if _, err := lifecycle.Run(context.Background(), Intent{}, nil); err == nil {
 		t.Fatal("checksum failure accepted")
 	}
 	if replaced {
@@ -228,7 +228,7 @@ func TestPackageManagerRefused_SELF010(t *testing.T) {
 	if err := SaveMetadata(home, metadata); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&Updater{OKITHome: home}).Update(context.Background(), UpdateOptions{}); err == nil {
+	if _, err := NewLifecycle(Dependencies{OKITHome: home}).Run(context.Background(), Intent{}, nil); err == nil {
 		t.Fatal("package manager update accepted")
 	}
 	if _, err := (&Uninstaller{OKITHome: home}).Uninstall(UninstallOptions{Yes: true}); err == nil {
@@ -242,13 +242,13 @@ func TestCheckAndDryRunHaveNoSideEffects_SELF011(t *testing.T) {
 	archive := []byte("archive")
 	hash := sha256.Sum256(archive)
 	source := &fakeSource{releases: []Release{{Version: "v1.1.0", AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}}
-	updater := Updater{CurrentVersion: "v1.0.0", OKITHome: home, Source: source, Metadata: &Metadata{Method: "official"}, Downloader: fakeDownload{data: map[string][]byte{
+	lifecycle := NewLifecycle(Dependencies{CurrentVersion: "v1.0.0", OKITHome: home, Source: source, Metadata: &Metadata{Method: "official"}, Downloader: fakeDownload{data: map[string][]byte{
 		"asset": archive, "sum": []byte(fmt.Sprintf("%x  okit.zip\n", hash)),
-	}}}
-	if _, err := updater.Update(context.Background(), UpdateOptions{Check: true}); err != nil {
+	}}})
+	if _, err := lifecycle.Run(context.Background(), Intent{Mode: ModeCheck}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := updater.Update(context.Background(), UpdateOptions{DryRun: true}); err != nil {
+	if _, err := lifecycle.Run(context.Background(), Intent{Mode: ModeDryRun}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(home); !os.IsNotExist(err) {
@@ -256,13 +256,40 @@ func TestCheckAndDryRunHaveNoSideEffects_SELF011(t *testing.T) {
 	}
 }
 
+func TestLifecycleCheckHasNoSideEffects(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "missing-home")
+	lifecycle := NewLifecycle(Dependencies{
+		CurrentVersion: "v1.0.0",
+		OKITHome:       home,
+		Metadata:       &Metadata{Method: "official"},
+		Source:         &fakeSource{releases: []Release{{Version: "v1.1.0"}}},
+		Downloader:     fakeDownload{},
+		Replace: func(string, string) (bool, error) {
+			t.Fatal("check must not replace the executable")
+			return false, nil
+		},
+	})
+
+	result, err := lifecycle.Run(context.Background(), Intent{Mode: ModeCheck}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusAvailable || result.Current != "v1.0.0" || result.Available != "v1.1.0" {
+		t.Fatalf("result=%+v", result)
+	}
+	if _, err := os.Stat(home); !os.IsNotExist(err) {
+		t.Fatalf("check created home: %v", err)
+	}
+}
+
 func TestUpToDateCheckIsSuccessful_SELF001(t *testing.T) {
-	updater := Updater{
+	lifecycle := NewLifecycle(Dependencies{
 		CurrentVersion: "v1.0.0",
 		Metadata:       &Metadata{Method: "official"},
 		Source:         &fakeSource{releases: []Release{{Version: "v1.0.0"}}},
-	}
-	result, err := updater.Update(context.Background(), UpdateOptions{Check: true})
+	})
+	result, err := lifecycle.Run(context.Background(), Intent{Mode: ModeCheck}, nil)
 	if err != nil || result.Current != "v1.0.0" || result.Available != "v1.0.0" || result.Updated {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -292,7 +319,7 @@ func TestHTTPDownloaderReportsProgress(t *testing.T) {
 	}
 }
 
-func TestUpdaterReportsProgressStages(t *testing.T) {
+func TestLifecycleReportsProgressStages(t *testing.T) {
 	root := t.TempDir()
 	archive := bytes.NewBuffer(nil)
 	zipWriter := zip.NewWriter(archive)
@@ -306,7 +333,7 @@ func TestUpdaterReportsProgressStages(t *testing.T) {
 	}
 	digest := sha256.Sum256(archive.Bytes())
 	var stages []ProgressStage
-	updater := Updater{
+	lifecycle := NewLifecycle(Dependencies{
 		CurrentVersion: "v1.0.0", Executable: filepath.Join(root, "okit.exe"), OKITHome: filepath.Join(root, "home"),
 		Metadata: &Metadata{Method: "official"},
 		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0", Prerelease: true, AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
@@ -314,10 +341,10 @@ func TestUpdaterReportsProgressStages(t *testing.T) {
 			"asset": archive.Bytes(), "sum": []byte(fmt.Sprintf("%x  okit.zip\n", digest)),
 		}},
 		Replace: func(_, _ string) (bool, error) { return false, nil },
-	}
-	_, err = updater.Update(context.Background(), UpdateOptions{Prerelease: true, Progress: ProgressFunc(func(progress Progress) {
+	})
+	_, err = lifecycle.Run(context.Background(), Intent{IncludePrerelease: true}, ProgressFunc(func(progress Progress) {
 		stages = append(stages, progress.Stage)
-	})})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -137,13 +137,13 @@ func TestRemovedTopLevelCommandsAreUsageErrors(t *testing.T) {
 }
 
 func TestUpgradeParsesDocumentedOptions(t *testing.T) {
-	updater := &fakeSelfUpdater{}
+	runner := &fakeUpgradeRunner{}
 	app := New("v1.0.0")
-	app.selfUpdater = updater
+	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer
 	code := app.Run([]string{"upgrade", "--check", "--version", "v1.1.0", "--prerelease", "--dry-run"}, &stdout, &stderr)
-	if code != 0 || !updater.options.Check || !updater.options.DryRun || !updater.options.Prerelease || updater.options.Version != "v1.1.0" {
-		t.Fatalf("code=%d options=%+v stdout=%q stderr=%q", code, updater.options, stdout.String(), stderr.String())
+	if code != 0 || runner.intent.Mode != selfmanage.ModeDryRun || !runner.intent.IncludePrerelease || runner.intent.Version != "v1.1.0" {
+		t.Fatalf("code=%d intent=%+v stdout=%q stderr=%q", code, runner.intent, stdout.String(), stderr.String())
 	}
 }
 
@@ -178,17 +178,17 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-type fakeSelfUpdater struct {
-	options selfmanage.UpdateOptions
-	result  selfmanage.UpdateResult
+type fakeUpgradeRunner struct {
+	intent selfmanage.Intent
+	result selfmanage.Result
 }
 
-func (f *fakeSelfUpdater) Update(_ context.Context, options selfmanage.UpdateOptions) (selfmanage.UpdateResult, error) {
-	f.options = options
+func (f *fakeUpgradeRunner) Run(_ context.Context, intent selfmanage.Intent, _ selfmanage.ProgressReporter) (selfmanage.Result, error) {
+	f.intent = intent
 	if f.result.Available != "" {
 		return f.result, nil
 	}
-	return selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}, nil
+	return selfmanage.Result{Status: selfmanage.StatusAvailable, Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}, nil
 }
 
 type fakeSelfUninstaller struct{ options selfmanage.UninstallOptions }

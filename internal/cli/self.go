@@ -3,10 +3,13 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -17,8 +20,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type upgradeOptions struct {
+	check, dryRun, prerelease bool
+	version                   string
+}
+
 func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
-	options := selfmanage.UpdateOptions{}
+	options := upgradeOptions{}
 	command := &cobra.Command{
 		Use:         "upgrade",
 		Short:       "检查或安装 okit 更新",
@@ -45,20 +53,39 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 					"请从正式发布版本重新安装 okit。",
 				)
 			}
-			updater := a.selfUpdater
-			if updater == nil {
+			runner := a.upgradeRunner
+			if runner == nil {
 				home, executable, err := selfPaths()
 				if err != nil {
 					return runError(err)
 				}
-				updater = &selfmanage.Updater{CurrentVersion: a.version, Executable: executable, OKITHome: home}
+				releaseClient := &http.Client{Timeout: 30 * time.Second}
+				runner = selfmanage.NewLifecycle(selfmanage.Dependencies{
+					CurrentVersion: a.version,
+					Executable:     executable,
+					OKITHome:       home,
+					Source: selfmanage.ManifestSource{
+						GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
+						Version: options.version, Prerelease: options.prerelease && options.version == "", Client: releaseClient,
+					},
+					Downloader: selfmanage.HTTPDownloader{Client: &http.Client{Timeout: 2 * time.Minute}},
+					Replace:    selfmanage.PlatformReplace,
+				})
 			}
-			if global.format != "json" && !options.Check && !options.DryRun && isTerminal(cmd.ErrOrStderr()) {
-				options.Progress = &terminalUpdateProgress{writer: cmd.ErrOrStderr()}
+			mode := selfmanage.ModeApply
+			if options.dryRun {
+				mode = selfmanage.ModeDryRun
+			} else if options.check {
+				mode = selfmanage.ModeCheck
 			}
-			result, err := updater.Update(context.Background(), options)
+			var progress selfmanage.ProgressReporter
+			if global.format != "json" && !options.check && !options.dryRun && isTerminal(cmd.ErrOrStderr()) {
+				progress = &terminalUpdateProgress{writer: cmd.ErrOrStderr()}
+			}
+			result, err := runner.Run(context.Background(), selfmanage.Intent{Mode: mode, Version: options.version, IncludePrerelease: options.prerelease}, progress)
 			if err != nil {
-				if strings.Contains(err.Error(), "403") {
+				var failure *selfmanage.Failure
+				if errors.As(err, &failure) && failure.Kind == selfmanage.FailureReleaseAccessDenied {
 					return domainError("SELF_RELEASE_ACCESS_DENIED", "发布服务拒绝了更新请求。", "请稍后重试；若触发服务限流，请配置 GH_TOKEN 或 GITHUB_TOKEN。")
 				}
 				return runError(err)
@@ -66,10 +93,10 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 			available := result.Available != "" && result.Available != result.Current
 			title := "okit 已是最新版本。"
 			hint := ""
-			if options.Check && available {
+			if options.check && available {
 				title = "有可用更新"
 				hint = "运行 `okit upgrade` 安装。"
-			} else if options.DryRun {
+			} else if options.dryRun {
 				title = "更新计划"
 			} else if result.Scheduled {
 				title = "已计划更新"
@@ -80,7 +107,7 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 				title = "已选择更新版本"
 			}
 			document := clioutput.Document{Title: title, Hint: hint}
-			if options.Check || options.DryRun {
+			if options.check || options.dryRun {
 				document.Fields = []clioutput.Field{{Label: "当前版本", Value: result.Current}, {Label: "可用版本", Value: result.Available}}
 			} else if result.Updated {
 				label := "已更新至"
@@ -89,7 +116,7 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 				}
 				document.Fields = []clioutput.Field{{Label: label, Value: result.Available}}
 			}
-			if options.DryRun {
+			if options.dryRun {
 				if result.Plan != "" {
 					document.Lines = []string{updatePlanSummary(result)}
 				}
@@ -108,14 +135,14 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 			return nil
 		},
 	}
-	command.Flags().BoolVar(&options.Check, "check", false, "仅检查是否有可用更新")
-	command.Flags().StringVar(&options.Version, "version", "", "安装指定版本")
-	command.Flags().BoolVar(&options.Prerelease, "prerelease", false, "包含预发布版本")
-	command.Flags().BoolVar(&options.DryRun, "dry-run", false, "显示更新计划但不修改文件")
+	command.Flags().BoolVar(&options.check, "check", false, "仅检查是否有可用更新")
+	command.Flags().StringVar(&options.version, "version", "", "安装指定版本")
+	command.Flags().BoolVar(&options.prerelease, "prerelease", false, "包含预发布版本")
+	command.Flags().BoolVar(&options.dryRun, "dry-run", false, "显示更新计划但不修改文件")
 	return command
 }
 
-func updatePlanSummary(result selfmanage.UpdateResult) string {
+func updatePlanSummary(result selfmanage.Result) string {
 	if result.Available == "" || result.Available == result.Current {
 		return "当前已是最新版本。"
 	}

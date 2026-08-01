@@ -100,23 +100,23 @@ func compareVersion(left, right semanticVersion) int {
 	return 1
 }
 
-func SelectRelease(current string, releases []Release, options UpdateOptions) (Release, error) {
+func SelectRelease(current string, releases []Release, intent Intent) (Release, error) {
 	currentVersion, err := parseVersion(current)
 	if err != nil {
 		return Release{}, err
 	}
-	if options.Version != "" {
+	if intent.Version != "" {
 		for _, release := range releases {
-			if strings.TrimPrefix(release.Version, "v") == strings.TrimPrefix(options.Version, "v") {
+			if strings.TrimPrefix(release.Version, "v") == strings.TrimPrefix(intent.Version, "v") {
 				return release, nil
 			}
 		}
-		return Release{}, fmt.Errorf("release %s was not found", options.Version)
+		return Release{}, fmt.Errorf("release %s was not found", intent.Version)
 	}
 	var selected Release
 	var selectedVersion semanticVersion
 	for _, release := range releases {
-		if release.Prerelease && !options.Prerelease {
+		if release.Prerelease && !intent.IncludePrerelease {
 			continue
 		}
 		parsed, err := parseVersion(release.Version)

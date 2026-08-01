@@ -90,20 +90,20 @@ func TestManifestSourceTreatsMissingPrereleasePointerAsNoUpdate(t *testing.T) {
 	}
 }
 
-func TestDefaultReleaseSourceUsesManifestsForEveryChannel(t *testing.T) {
+func TestManifestSourceUsesManifestsForEveryChannel(t *testing.T) {
 	client := &http.Client{}
 	tests := []struct {
-		options        UpdateOptions
+		intent         Intent
 		wantPrerelease bool
 	}{
-		{UpdateOptions{}, false},
-		{UpdateOptions{Version: "v2.0.0"}, false},
-		{UpdateOptions{Version: "v2.1.0", Prerelease: true}, false},
-		{UpdateOptions{Prerelease: true}, true},
+		{Intent{}, false},
+		{Intent{Version: "v2.0.0"}, false},
+		{Intent{Version: "v2.1.0", IncludePrerelease: true}, false},
+		{Intent{IncludePrerelease: true}, true},
 	}
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("%+v", test.options), func(t *testing.T) {
-			source := defaultReleaseSource(test.options, "linux", "amd64", client).(ManifestSource)
+		t.Run(fmt.Sprintf("%+v", test.intent), func(t *testing.T) {
+			source := ManifestSource{GOOS: "linux", GOARCH: "amd64", Version: test.intent.Version, Prerelease: test.intent.IncludePrerelease && test.intent.Version == "", Client: client}
 			if source.Prerelease != test.wantPrerelease {
 				t.Fatalf("prerelease=%t, want %t", source.Prerelease, test.wantPrerelease)
 			}
@@ -111,7 +111,7 @@ func TestDefaultReleaseSourceUsesManifestsForEveryChannel(t *testing.T) {
 	}
 }
 
-func TestUpdaterDownloadsManifestAssetAndChecksums(t *testing.T) {
+func TestLifecycleDownloadsManifestAssetAndChecksums(t *testing.T) {
 	var archive bytes.Buffer
 	zipWriter := zip.NewWriter(&archive)
 	file, err := zipWriter.Create("okit.exe")
@@ -147,7 +147,7 @@ func TestUpdaterDownloadsManifestAssetAndChecksums(t *testing.T) {
 	}
 	executable := filepath.Join(root, "okit.exe")
 	replaced := false
-	updater := Updater{
+	lifecycle := NewLifecycle(Dependencies{
 		CurrentVersion: "v1.0.0",
 		Executable:     executable,
 		OKITHome:       home,
@@ -167,8 +167,8 @@ func TestUpdaterDownloadsManifestAssetAndChecksums(t *testing.T) {
 			replaced = true
 			return false, nil
 		},
-	}
-	result, err := updater.Update(context.Background(), UpdateOptions{})
+	})
+	result, err := lifecycle.Run(context.Background(), Intent{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

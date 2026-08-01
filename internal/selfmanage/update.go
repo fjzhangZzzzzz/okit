@@ -14,9 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"time"
 )
 
 type Release struct {
@@ -70,15 +68,34 @@ type progressDownloader interface {
 }
 type ReplaceFunc func(executable, staged string) (scheduled bool, err error)
 
-type UpdateOptions struct {
-	Check      bool
-	DryRun     bool
-	Version    string
-	Prerelease bool
-	Progress   ProgressReporter
+// Mode describes the requested upgrade lifecycle without exposing execution details.
+type Mode uint8
+
+const (
+	ModeApply Mode = iota
+	ModeCheck
+	ModeDryRun
+)
+
+// Intent is the complete user intent accepted by the lifecycle module.
+type Intent struct {
+	Mode              Mode
+	Version           string
+	IncludePrerelease bool
 }
 
-type UpdateResult struct {
+type Status uint8
+
+const (
+	StatusUpToDate Status = iota
+	StatusAvailable
+	StatusApplied
+	StatusScheduled
+)
+
+// Result is the stable semantic outcome of an upgrade lifecycle.
+type Result struct {
+	Status    Status
 	Current   string
 	Available string
 	Updated   bool
@@ -86,25 +103,46 @@ type UpdateResult struct {
 	Plan      string
 }
 
-type Updater struct {
+// FailureKind classifies upgrade failures without leaking transport text to callers.
+type FailureKind string
+
+const (
+	FailureReleaseAccessDenied FailureKind = "release_access_denied"
+)
+
+type Failure struct {
+	Kind  FailureKind
+	Cause error
+}
+
+func (f *Failure) Error() string { return f.Cause.Error() }
+func (f *Failure) Unwrap() error { return f.Cause }
+
+// Dependencies are chosen at the CLI composition seam. Each port has production and
+// test adapters; the lifecycle owns every remaining execution detail.
+type Dependencies struct {
 	CurrentVersion string
 	Executable     string
 	OKITHome       string
-	GOOS           string
-	GOARCH         string
 	Source         ReleaseSource
 	Downloader     Downloader
 	Replace        ReplaceFunc
 	Metadata       *Metadata
 }
 
-func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResult, error) {
+// Lifecycle is the deep module behind the upgrade seam.
+type Lifecycle struct{ Dependencies }
+
+func NewLifecycle(deps Dependencies) *Lifecycle { return &Lifecycle{Dependencies: deps} }
+
+// Run handles check, dry-run, and apply through one interface.
+func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressReporter) (Result, error) {
 	metadata, err := u.metadata()
 	if err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
 	if err := requireOfficial(metadata); err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
 	if u.CurrentVersion == "" {
 		u.CurrentVersion = metadata.Version
@@ -113,58 +151,50 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 		u.Executable = metadata.Executable
 	}
 	if u.Source == nil {
-		goos, arch := u.GOOS, u.GOARCH
-		if goos == "" {
-			goos = runtime.GOOS
-		}
-		if arch == "" {
-			arch = runtime.GOARCH
-		}
-		client := &http.Client{Timeout: 30 * time.Second}
-		u.Source = defaultReleaseSource(options, goos, arch, client)
+		return Result{}, errors.New("upgrade lifecycle dependencies are incomplete")
 	}
 	releases, err := u.Source.Releases(ctx)
 	if errors.Is(err, ErrNoPrerelease) {
-		return UpdateResult{Current: u.CurrentVersion, Available: u.CurrentVersion, Plan: "no prerelease is available"}, nil
+		return Result{Status: StatusUpToDate, Current: u.CurrentVersion, Available: u.CurrentVersion, Plan: "no prerelease is available"}, nil
 	}
 	if err != nil {
-		return UpdateResult{}, err
+		return Result{}, classifyFailure(err)
 	}
-	release, err := SelectRelease(u.CurrentVersion, releases, options)
+	release, err := SelectRelease(u.CurrentVersion, releases, intent)
 	if errors.Is(err, ErrNoUpdate) {
-		return UpdateResult{Current: u.CurrentVersion, Available: u.CurrentVersion, Plan: "already up to date"}, nil
+		return Result{Status: StatusUpToDate, Current: u.CurrentVersion, Available: u.CurrentVersion, Plan: "already up to date"}, nil
 	}
 	if err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
-	result := UpdateResult{Current: u.CurrentVersion, Available: release.Version, Plan: fmt.Sprintf("would update %s to %s", u.CurrentVersion, release.Version)}
-	if options.Check || options.DryRun {
+	result := Result{Status: StatusAvailable, Current: u.CurrentVersion, Available: release.Version, Plan: fmt.Sprintf("would update %s to %s", u.CurrentVersion, release.Version)}
+	if intent.Mode == ModeCheck || intent.Mode == ModeDryRun {
 		return result, nil
 	}
-	reportProgress(options.Progress, Progress{Stage: ProgressUpdateAvailable, Version: release.Version})
+	if u.Downloader == nil || u.Replace == nil {
+		return Result{}, errors.New("upgrade lifecycle dependencies are incomplete")
+	}
+	reportProgress(progress, Progress{Stage: ProgressUpdateAvailable, Version: release.Version})
 	lock, err := AcquireLock(u.OKITHome)
 	if err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
 	defer lock.Release()
-	if u.Downloader == nil {
-		u.Downloader = HTTPDownloader{Client: &http.Client{Timeout: 2 * time.Minute}}
-	}
-	archive, err := downloadWithProgress(ctx, u.Downloader, release.AssetURL, options.Progress, ProgressDownloadAsset, release.Version)
+	archive, err := downloadWithProgress(ctx, u.Downloader, release.AssetURL, progress, ProgressDownloadAsset, release.Version)
 	if err != nil {
-		return UpdateResult{}, fmt.Errorf("download release asset: %w", err)
+		return Result{}, fmt.Errorf("download release asset: %w", err)
 	}
-	checksums, err := downloadWithProgress(ctx, u.Downloader, release.ChecksumsURL, options.Progress, ProgressDownloadChecksum, release.Version)
+	checksums, err := downloadWithProgress(ctx, u.Downloader, release.ChecksumsURL, progress, ProgressDownloadChecksum, release.Version)
 	if err != nil {
-		return UpdateResult{}, fmt.Errorf("download checksums: %w", err)
+		return Result{}, fmt.Errorf("download checksums: %w", err)
 	}
-	reportProgress(options.Progress, Progress{Stage: ProgressVerifyChecksum, Version: release.Version})
+	reportProgress(progress, Progress{Stage: ProgressVerifyChecksum, Version: release.Version})
 	if err := verifyChecksum(release.AssetName, archive, checksums); err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
 	stagingDir, err := os.MkdirTemp(u.OKITHome, ".update-*")
 	if err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
 	removeStaging := true
 	defer func() {
@@ -172,31 +202,39 @@ func (u *Updater) Update(ctx context.Context, options UpdateOptions) (UpdateResu
 			_ = os.RemoveAll(stagingDir)
 		}
 	}()
-	reportProgress(options.Progress, Progress{Stage: ProgressExtract, Version: release.Version})
+	reportProgress(progress, Progress{Stage: ProgressExtract, Version: release.Version})
 	staged, err := extractExecutable(release.AssetName, archive, stagingDir)
 	if err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
-	replace := u.Replace
-	if replace == nil {
-		replace = PlatformReplace
-	}
-	reportProgress(options.Progress, Progress{Stage: ProgressReplace, Version: release.Version})
-	scheduled, err := replace(u.Executable, staged)
+	reportProgress(progress, Progress{Stage: ProgressReplace, Version: release.Version})
+	scheduled, err := u.Replace(u.Executable, staged)
 	if err != nil {
-		return UpdateResult{}, err
+		return Result{}, err
 	}
 	metadata.Version = release.Version
 	metadata.Channel = releaseChannel(release)
 	removeStaging = !scheduled
 	if !scheduled {
 		if err := SaveMetadata(u.OKITHome, metadata); err != nil {
-			return UpdateResult{}, err
+			return Result{}, err
 		}
 	}
 	result.Updated, result.Scheduled = true, scheduled
-	reportProgress(options.Progress, Progress{Stage: ProgressComplete, Version: release.Version, Scheduled: scheduled})
+	if scheduled {
+		result.Status = StatusScheduled
+	} else {
+		result.Status = StatusApplied
+	}
+	reportProgress(progress, Progress{Stage: ProgressComplete, Version: release.Version, Scheduled: scheduled})
 	return result, nil
+}
+
+func classifyFailure(err error) error {
+	if strings.Contains(err.Error(), "HTTP 403") {
+		return &Failure{Kind: FailureReleaseAccessDenied, Cause: err}
+	}
+	return err
 }
 
 func releaseChannel(release Release) string {
@@ -222,11 +260,7 @@ func downloadWithProgress(ctx context.Context, downloader Downloader, url string
 	return downloader.Download(ctx, url)
 }
 
-func defaultReleaseSource(options UpdateOptions, goos, goarch string, client *http.Client) ReleaseSource {
-	return ManifestSource{GOOS: goos, GOARCH: goarch, Version: options.Version, Prerelease: options.Prerelease && options.Version == "", Client: client}
-}
-
-func (u *Updater) metadata() (Metadata, error) {
+func (u *Lifecycle) metadata() (Metadata, error) {
 	if u.Metadata != nil {
 		return *u.Metadata, nil
 	}

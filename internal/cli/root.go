@@ -16,7 +16,7 @@ import (
 type App struct {
 	version         string
 	buildMode       string
-	selfUpdater     selfUpdater
+	upgradeRunner   upgradeRunner
 	selfUninstaller selfUninstaller
 	commit          string
 	date            string
@@ -76,8 +76,8 @@ func inferBuildMode(version string) string {
 	return BuildModeDevelopment
 }
 
-type selfUpdater interface {
-	Update(context.Context, selfmanage.UpdateOptions) (selfmanage.UpdateResult, error)
+type upgradeRunner interface {
+	Run(context.Context, selfmanage.Intent, selfmanage.ProgressReporter) (selfmanage.Result, error)
 }
 
 type selfUninstaller interface {

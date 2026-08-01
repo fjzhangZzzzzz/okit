@@ -117,7 +117,7 @@ func TestMobaXtermLicenseDeploymentSummaryTranslatesHumanOutput(t *testing.T) {
 
 func TestSelfUpdateFallbackTitleIsChinese(t *testing.T) {
 	app := New("v1.0.0")
-	app.selfUpdater = &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0"}}
+	app.upgradeRunner = &fakeUpgradeRunner{result: selfmanage.Result{Current: "v1.0.0", Available: "v1.1.0"}}
 	var stdout, stderr bytes.Buffer
 	if code := app.Run([]string{"upgrade"}, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -129,7 +129,7 @@ func TestSelfUpdateFallbackTitleIsChinese(t *testing.T) {
 
 func TestSelfUpdateDryRunUsesChinesePlanAndPreservesMachinePlan(t *testing.T) {
 	app := New("v1.0.0")
-	app.selfUpdater = &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}}
+	app.upgradeRunner = &fakeUpgradeRunner{result: selfmanage.Result{Current: "v1.0.0", Available: "v1.1.0", Plan: "would update v1.0.0 to v1.1.0"}}
 	var stdout, stderr bytes.Buffer
 	if code := app.Run([]string{"upgrade", "--dry-run"}, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -159,9 +159,9 @@ func containsChinese(value string) bool {
 }
 
 func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
-	updater := &fakeSelfUpdater{}
+	runner := &fakeUpgradeRunner{}
 	app := New("v1.0.0")
-	app.selfUpdater = updater
+	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer
 	if code := app.Run([]string{"upgrade", "--check"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -184,9 +184,9 @@ func TestSelfUpdateCheckIsActionableAndStructured(t *testing.T) {
 }
 
 func TestSelfUpdateScheduledHumanOutputExplainsWhenItTakesEffect(t *testing.T) {
-	updater := &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Updated: true, Scheduled: true}}
+	runner := &fakeUpgradeRunner{result: selfmanage.Result{Current: "v1.0.0", Available: "v1.1.0", Updated: true, Scheduled: true}}
 	app := New("v1.0.0")
-	app.selfUpdater = updater
+	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer
 	if code := app.Run([]string{"upgrade"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -203,9 +203,9 @@ func TestSelfUpdateScheduledHumanOutputExplainsWhenItTakesEffect(t *testing.T) {
 }
 
 func TestSelfUpdateAppliedHumanOutputShowsTargetOnly(t *testing.T) {
-	updater := &fakeSelfUpdater{result: selfmanage.UpdateResult{Current: "v1.0.0", Available: "v1.1.0", Updated: true}}
+	runner := &fakeUpgradeRunner{result: selfmanage.Result{Current: "v1.0.0", Available: "v1.1.0", Updated: true}}
 	app := New("v1.0.0")
-	app.selfUpdater = updater
+	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer
 	if code := app.Run([]string{"upgrade"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -237,7 +237,7 @@ func TestSelfUpdateDevelopmentBuildReturnsInformationalStatus(t *testing.T) {
 
 func TestSelfUpdateLocalSemanticVersionStillUsesDevelopmentStatus(t *testing.T) {
 	app := NewBuildMode("v1.2.3", "abc123", "2026-07-19", BuildModeDevelopment)
-	app.selfUpdater = &fakeSelfUpdater{}
+	app.upgradeRunner = &fakeUpgradeRunner{}
 	var stdout, stderr bytes.Buffer
 	code := app.Run([]string{"upgrade", "--check"}, &stdout, &stderr)
 	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "开发构建") || strings.Contains(stdout.String(), "有可用更新") {
