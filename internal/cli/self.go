@@ -77,7 +77,7 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 			} else if result.Updated {
 				title = "okit 更新成功。"
 			} else if available {
-				title = "Update selected"
+				title = "已选择更新版本"
 			}
 			document := clioutput.Document{Title: title, Hint: hint}
 			if options.Check || options.DryRun {
@@ -91,7 +91,7 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 			}
 			if options.DryRun {
 				if result.Plan != "" {
-					document.Lines = []string{result.Plan}
+					document.Lines = []string{updatePlanSummary(result)}
 				}
 				document.Summary = "未作任何更改。"
 			}
@@ -113,6 +113,13 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 	command.Flags().BoolVar(&options.Prerelease, "prerelease", false, "包含预发布版本")
 	command.Flags().BoolVar(&options.DryRun, "dry-run", false, "显示更新计划但不修改文件")
 	return command
+}
+
+func updatePlanSummary(result selfmanage.UpdateResult) string {
+	if result.Available == "" || result.Available == result.Current {
+		return "当前已是最新版本。"
+	}
+	return fmt.Sprintf("将从 %s 更新到 %s。", result.Current, result.Available)
 }
 
 type terminalUpdateProgress struct {

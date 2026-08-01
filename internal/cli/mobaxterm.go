@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fjzhangZzzzzz/okit/internal/config"
@@ -49,20 +50,25 @@ func newMobaStatusCommand(global *globalOptions) *cobra.Command {
 			if err != nil {
 				return runError(err)
 			}
-			document := clioutput.Document{Title: "Detected MobaXterm installations"}
-			if len(candidates) == 0 {
-				document.Title = ""
-				document.Empty = &clioutput.EmptyState{Message: "No MobaXterm installation found."}
-			} else {
-				table := &clioutput.Table{Headers: []string{"DEFAULT", "VERSION", "SOURCE", "EXECUTABLE", "CONFIG"}}
-				for _, candidate := range candidates {
-					table.Rows = append(table.Rows, []string{boolText(candidate.Default), candidate.Version, candidate.Source, candidate.ExePath, candidate.ConfigPath})
-				}
-				document.Table = table
-			}
+			document := mobaStatusDocument(candidates)
 			return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: candidates})
 		},
 	}
+}
+
+func mobaStatusDocument(candidates []mobaxterm.Candidate) clioutput.Document {
+	document := clioutput.Document{Title: "已检测到的 MobaXterm 安装"}
+	if len(candidates) == 0 {
+		document.Title = ""
+		document.Empty = &clioutput.EmptyState{Message: "未找到 MobaXterm 安装。"}
+		return document
+	}
+	table := &clioutput.Table{Headers: []string{"默认", "版本", "来源", "可执行文件", "配置文件"}}
+	for _, candidate := range candidates {
+		table.Rows = append(table.Rows, []string{boolText(candidate.Default), candidate.Version, candidate.Source, candidate.ExePath, candidate.ConfigPath})
+	}
+	document.Table = table
+	return document
 }
 
 func newMobaThemeCommand(global *globalOptions) *cobra.Command {
@@ -91,20 +97,20 @@ func newMobaThemeListCommand(global *globalOptions) *cobra.Command {
 				if errors.Is(err, os.ErrNotExist) {
 					return newPresenter(cmd, global).Render(clioutput.View{
 						Human: clioutput.Document{Empty: &clioutput.EmptyState{
-							Message: "No cached MobaXterm themes found.",
-							Hint:    "Initialize the cache with `okit mobaxterm theme cache update`.",
+							Message: "未找到缓存的 MobaXterm 主题。",
+							Hint:    "请运行 `okit mobaxterm theme cache update` 初始化缓存。",
 						}},
 						Machine: []string{},
 					})
 				}
 				return runError(err)
 			}
-			document := clioutput.Document{Title: "Cached MobaXterm themes"}
+			document := clioutput.Document{Title: "已缓存的 MobaXterm 主题"}
 			if len(schemes) == 0 {
 				document.Title = ""
-				document.Empty = &clioutput.EmptyState{Message: "No themes matched the current filter.", Hint: "Try a different --search value."}
+				document.Empty = &clioutput.EmptyState{Message: "没有主题匹配当前筛选条件。", Hint: "请尝试其他 --search 值。"}
 			} else {
-				table := &clioutput.Table{Headers: []string{"THEME"}}
+				table := &clioutput.Table{Headers: []string{"主题"}}
 				for _, scheme := range schemes {
 					table.Rows = append(table.Rows, []string{scheme})
 				}
@@ -139,8 +145,8 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 				return runError(fmt.Errorf("MobaXterm installation was not found"))
 			}
 			presenter := newPresenter(cmd, global)
-			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, "Apply the selected MobaXterm theme?") {
-				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "Theme application cancelled", Summary: "No changes were made."}, Machine: map[string]any{"status": "cancelled", "changed": false}})
+			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeApplyPrompt()) {
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消应用主题", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 			}
 			var result theme.Result
 			if noBackup {
@@ -151,16 +157,16 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 			if err != nil {
 				return runError(err)
 			}
-			title := "MobaXterm theme applied"
+			title := "已应用 MobaXterm 主题"
 			summary := ""
 			if dryRun {
-				title = "MobaXterm theme application plan"
-				summary = "No changes were made."
+				title = "MobaXterm 主题应用计划"
+				summary = "未作任何更改。"
 			} else if !result.Changed {
-				title = "MobaXterm theme is unchanged."
+				title = "MobaXterm 主题未发生变化。"
 			}
 			return presenter.Render(clioutput.View{
-				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Theme", Value: args[0]}, {Label: "Config", Value: candidates[0].ConfigPath}, {Label: "Backup", Value: result.BackupPath}}, Summary: summary},
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "主题", Value: args[0]}, {Label: "配置文件", Value: candidates[0].ConfigPath}, {Label: "备份", Value: result.BackupPath}}, Summary: summary},
 				Machine: map[string]any{"status": themeStatus(dryRun, result.Changed), "theme": args[0], "config_path": candidates[0].ConfigPath, "backup_path": result.BackupPath, "changed": result.Changed},
 			})
 		},
@@ -196,20 +202,20 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 				return runError(fmt.Errorf("MobaXterm installation was not found"))
 			}
 			presenter := newPresenter(cmd, global)
-			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, "Restore the MobaXterm configuration backup?") {
-				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "Theme restore cancelled", Summary: "No changes were made."}, Machine: map[string]any{"status": "cancelled", "changed": false}})
+			if !dryRun && !force && !confirmAction(cmd.InOrStdin(), presenter, mobaThemeRestorePrompt()) {
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消还原主题", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 			}
 			if err := theme.Restore(candidates[0].ConfigPath, selected, dryRun); err != nil {
 				return runError(err)
 			}
-			title := "MobaXterm configuration restored"
+			title := "已还原 MobaXterm 配置"
 			summary := ""
 			if dryRun {
-				title = "MobaXterm restore plan"
-				summary = "No changes were made."
+				title = "MobaXterm 配置还原计划"
+				summary = "未作任何更改。"
 			}
 			return presenter.Render(clioutput.View{
-				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Backup", Value: selected}, {Label: "Config", Value: candidates[0].ConfigPath}}, Summary: summary},
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "备份", Value: selected}, {Label: "配置文件", Value: candidates[0].ConfigPath}}, Summary: summary},
 				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "backup_path": selected, "config_path": candidates[0].ConfigPath},
 			})
 		},
@@ -254,23 +260,23 @@ func newMobaThemeCacheAction(action, description string, global *globalOptions) 
 				if exists {
 					modified = info.ModTime().UTC().Format(time.RFC3339)
 				}
-				document := clioutput.Document{Title: "MobaXterm theme cache status", Fields: []clioutput.Field{{Label: "Exists", Value: boolText(exists)}, {Label: "Path", Value: cachePath}, {Label: "Modified", Value: modified}}}
+				document := clioutput.Document{Title: "MobaXterm 主题缓存状态", Fields: []clioutput.Field{{Label: "是否存在", Value: boolText(exists)}, {Label: "路径", Value: cachePath}, {Label: "修改时间", Value: modified}}}
 				if !exists {
-					document.Hint = "Initialize the cache with `okit mobaxterm theme cache update`."
+					document.Hint = "请运行 `okit mobaxterm theme cache update` 初始化缓存。"
 				}
 				return newPresenter(cmd, global).Render(clioutput.View{Human: document, Machine: map[string]any{"exists": exists, "path": cachePath, "modified": modified}})
 			}
 			if err != nil {
 				return runError(err)
 			}
-			title := "MobaXterm theme cache updated"
+			title := "已更新 MobaXterm 主题缓存"
 			status := "updated"
 			if action == "clean" {
-				title = "MobaXterm theme cache removed"
+				title = "已删除 MobaXterm 主题缓存"
 				status = "removed"
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
-				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Path", Value: cachePath}}},
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "路径", Value: cachePath}}},
 				Machine: map[string]any{"status": status, "path": cachePath},
 			})
 		},
@@ -308,7 +314,7 @@ func newMobaLicenseGenerateCommand(global *globalOptions) *cobra.Command {
 				return runError(err)
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
-				Human:   clioutput.Document{Title: "MobaXterm license created", Fields: []clioutput.Field{{Label: "Output", Value: output}, {Label: "Username", Value: username}, {Label: "Version", Value: version}}},
+				Human:   clioutput.Document{Title: "已生成 MobaXterm 许可证", Fields: []clioutput.Field{{Label: "输出文件", Value: output}, {Label: "用户名", Value: username}, {Label: "版本", Value: version}}},
 				Machine: map[string]any{"status": "created", "output": output, "username": username, "version": version},
 			})
 		},
@@ -341,22 +347,22 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 				if err != nil {
 					return runError(err)
 				}
-				if !force && !confirmAction(cmd.InOrStdin(), presenter, "Deploy the MobaXterm license file? "+plan) {
-					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "License deployment cancelled", Summary: "No changes were made."}, Machine: map[string]any{"status": "cancelled", "changed": false}})
+				if !force && !confirmAction(cmd.InOrStdin(), presenter, mobaLicenseDeployPrompt(plan)) {
+					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消部署许可证", Summary: "未作任何更改。"}, Machine: map[string]any{"status": "cancelled", "changed": false}})
 				}
 			}
 			result, err := service.DeployLicense(username, version, dryRun)
 			if err != nil {
 				return runError(err)
 			}
-			title := "MobaXterm license deployed"
+			title := "已部署 MobaXterm 许可证"
 			summary := ""
 			if dryRun {
-				title = "MobaXterm license deployment plan"
-				summary = "No changes were made."
+				title = "MobaXterm 许可证部署计划"
+				summary = "未作任何更改。"
 			}
 			return presenter.Render(clioutput.View{
-				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "Username", Value: username}, {Label: "Version", Value: version}, {Label: "Result", Value: result}}, Summary: summary},
+				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "用户名", Value: username}, {Label: "版本", Value: version}, {Label: "结果", Value: mobaLicenseDeploymentSummary(result)}}, Summary: summary},
 				Machine: map[string]any{"status": plannedOrCompleted(dryRun), "username": username, "version": version, "result": result},
 			})
 		},
@@ -384,9 +390,9 @@ func newMobaLicenseInspectCommand(global *globalOptions) *cobra.Command {
 				return runError(err)
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
-				Human: clioutput.Document{Title: "MobaXterm license", Fields: []clioutput.Field{
-					{Label: "Username", Value: info.Username}, {Label: "Version", Value: info.Version},
-					{Label: "License type", Value: info.LicenseType}, {Label: "User count", Value: strconv.Itoa(info.UserCount)},
+				Human: clioutput.Document{Title: "MobaXterm 许可证", Fields: []clioutput.Field{
+					{Label: "用户名", Value: info.Username}, {Label: "版本", Value: info.Version},
+					{Label: "许可证类型", Value: info.LicenseType}, {Label: "用户数量", Value: strconv.Itoa(info.UserCount)},
 				}},
 				Machine: info,
 			})
@@ -414,10 +420,10 @@ func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 				return runError(err)
 			}
 			if !valid {
-				return domainError("MOBA_LICENSE_INVALID", "License verification failed.", "Check the expected username, version, and license input.")
+				return domainError("MOBA_LICENSE_INVALID", "许可证验证失败。", "请检查预期的用户名、版本和许可证输入。")
 			}
 			return newPresenter(cmd, global).Render(clioutput.View{
-				Human:   clioutput.Document{Title: "MobaXterm license is valid.", Fields: []clioutput.Field{{Label: "Username", Value: username}, {Label: "Version", Value: version}}},
+				Human:   clioutput.Document{Title: "MobaXterm 许可证有效。", Fields: []clioutput.Field{{Label: "用户名", Value: username}, {Label: "版本", Value: version}}},
 				Machine: map[string]any{"valid": true, "username": username, "version": version},
 			})
 		},
@@ -449,4 +455,22 @@ func readLicenseArgument(value string) (string, error) {
 		return license.ReadFile(value)
 	}
 	return value, nil
+}
+
+func mobaThemeApplyPrompt() string { return "要应用选定的 MobaXterm 主题吗？" }
+
+func mobaThemeRestorePrompt() string { return "要还原 MobaXterm 配置备份吗？" }
+
+func mobaLicenseDeployPrompt(plan string) string {
+	return "要部署 MobaXterm 许可证文件吗？ " + mobaLicenseDeploymentSummary(plan)
+}
+
+func mobaLicenseDeploymentSummary(result string) string {
+	if path, ok := strings.CutPrefix(result, "would deploy license to "); ok {
+		return "将把许可证部署到 " + path
+	}
+	if path, ok := strings.CutPrefix(result, "deployed license to "); ok {
+		return "已将许可证部署到 " + path
+	}
+	return "许可证部署已完成。"
 }
