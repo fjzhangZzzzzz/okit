@@ -136,89 +136,128 @@ type Lifecycle struct{ Dependencies }
 
 func NewLifecycle(deps Dependencies) *Lifecycle { return &Lifecycle{Dependencies: deps} }
 
+type lifecyclePlan struct {
+	result     Result
+	release    Release
+	managed    ManagedInstallation
+	executable string
+}
+
+type preparedUpgrade struct {
+	lock        *Lock
+	stagingDir  string
+	staged      string
+	metadata    Metadata
+	transaction *UpdateTransaction
+}
+
 // Run handles check, dry-run, and apply through one interface.
 func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressReporter) (Result, error) {
-	metadata, err := u.metadata()
+	plan, err := u.plan(ctx, intent)
 	if err != nil {
 		return Result{}, err
+	}
+	if plan.release.Version == "" || intent.Mode == ModeCheck || intent.Mode == ModeDryRun {
+		return plan.result, nil
+	}
+	prepared, err := u.prepare(ctx, plan, progress)
+	if err != nil {
+		return Result{}, err
+	}
+	defer prepared.lock.Release()
+	return u.apply(plan, prepared, progress)
+}
+
+func (u *Lifecycle) plan(ctx context.Context, intent Intent) (lifecyclePlan, error) {
+	metadata, err := u.metadata()
+	if err != nil {
+		return lifecyclePlan{}, err
 	}
 	managed, err := NewManagedInstallation(metadata)
 	if err != nil {
-		return Result{}, err
+		return lifecyclePlan{}, err
 	}
-	if u.CurrentVersion == "" {
-		u.CurrentVersion = metadata.Version
+	current := u.CurrentVersion
+	if current == "" {
+		current = metadata.Version
 	}
-	if u.Executable == "" {
-		u.Executable = metadata.Executable
+	executable := u.Executable
+	if executable == "" {
+		executable = metadata.Executable
 	}
 	if u.Source == nil {
-		return Result{}, errors.New("upgrade lifecycle dependencies are incomplete")
+		return lifecyclePlan{}, errors.New("upgrade lifecycle dependencies are incomplete")
 	}
 	releases, err := u.Source.Releases(ctx)
 	if errors.Is(err, ErrNoPrerelease) {
-		return Result{Status: StatusUpToDate, Current: u.CurrentVersion, Available: u.CurrentVersion, Plan: "no prerelease is available"}, nil
+		return lifecyclePlan{result: Result{Status: StatusUpToDate, Current: current, Available: current, Plan: "no prerelease is available"}}, nil
 	}
 	if err != nil {
-		return Result{}, classifyFailure(err)
+		return lifecyclePlan{}, classifyFailure(err)
 	}
-	release, err := SelectRelease(u.CurrentVersion, releases, intent)
+	release, err := SelectRelease(current, releases, intent)
 	if errors.Is(err, ErrNoUpdate) {
-		return Result{Status: StatusUpToDate, Current: u.CurrentVersion, Available: u.CurrentVersion, Plan: "already up to date"}, nil
+		return lifecyclePlan{result: Result{Status: StatusUpToDate, Current: current, Available: current, Plan: "already up to date"}}, nil
 	}
 	if err != nil {
-		return Result{}, err
+		return lifecyclePlan{}, err
 	}
-	result := Result{Status: StatusAvailable, Current: u.CurrentVersion, Available: release.Version, Plan: fmt.Sprintf("would update %s to %s", u.CurrentVersion, release.Version)}
-	if intent.Mode == ModeCheck {
-		return result, nil
-	}
+	result := Result{Status: StatusAvailable, Current: current, Available: release.Version, Plan: fmt.Sprintf("would update %s to %s", current, release.Version)}
 	if intent.Mode == ModeDryRun {
 		result.Status = StatusPlanned
-		return result, nil
 	}
+	return lifecyclePlan{result: result, release: release, managed: managed, executable: executable}, nil
+}
+
+func (u *Lifecycle) prepare(ctx context.Context, plan lifecyclePlan, progress ProgressReporter) (*preparedUpgrade, error) {
 	if u.Downloader == nil || u.Replace == nil {
-		return Result{}, errors.New("upgrade lifecycle dependencies are incomplete")
+		return nil, errors.New("upgrade lifecycle dependencies are incomplete")
 	}
-	reportProgress(progress, Progress{Stage: ProgressUpdateAvailable, Version: release.Version})
+	reportProgress(progress, Progress{Stage: ProgressUpdateAvailable, Version: plan.release.Version})
 	lock, err := AcquireLock(u.OKITHome)
 	if err != nil {
-		return Result{}, err
+		return nil, err
 	}
-	defer lock.Release()
-	archive, err := downloadWithProgress(ctx, u.Downloader, release.AssetURL, progress, ProgressDownloadAsset, release.Version)
+	prepared := &preparedUpgrade{lock: lock}
+	cleanup := func() {
+		if prepared.stagingDir != "" {
+			_ = os.RemoveAll(prepared.stagingDir)
+		}
+		_ = lock.Release()
+	}
+	archive, err := downloadWithProgress(ctx, u.Downloader, plan.release.AssetURL, progress, ProgressDownloadAsset, plan.release.Version)
 	if err != nil {
-		return Result{}, fmt.Errorf("download release asset: %w", err)
+		cleanup()
+		return nil, fmt.Errorf("download release asset: %w", err)
 	}
-	checksums, err := downloadWithProgress(ctx, u.Downloader, release.ChecksumsURL, progress, ProgressDownloadChecksum, release.Version)
+	checksums, err := downloadWithProgress(ctx, u.Downloader, plan.release.ChecksumsURL, progress, ProgressDownloadChecksum, plan.release.Version)
 	if err != nil {
-		return Result{}, fmt.Errorf("download checksums: %w", err)
+		cleanup()
+		return nil, fmt.Errorf("download checksums: %w", err)
 	}
-	reportProgress(progress, Progress{Stage: ProgressVerifyChecksum, Version: release.Version})
-	if err := verifyChecksum(release.AssetName, archive, checksums); err != nil {
-		return Result{}, err
+	reportProgress(progress, Progress{Stage: ProgressVerifyChecksum, Version: plan.release.Version})
+	if err := verifyChecksum(plan.release.AssetName, archive, checksums); err != nil {
+		cleanup()
+		return nil, err
 	}
 	stagingDir, err := os.MkdirTemp(u.OKITHome, ".update-*")
 	if err != nil {
-		return Result{}, err
+		cleanup()
+		return nil, err
 	}
-	removeStaging := true
-	defer func() {
-		if removeStaging {
-			_ = os.RemoveAll(stagingDir)
-		}
-	}()
-	reportProgress(progress, Progress{Stage: ProgressExtract, Version: release.Version})
-	staged, err := extractExecutable(release.AssetName, archive, stagingDir)
+	prepared.stagingDir = stagingDir
+	reportProgress(progress, Progress{Stage: ProgressExtract, Version: plan.release.Version})
+	staged, err := extractExecutable(plan.release.AssetName, archive, stagingDir)
 	if err != nil {
-		return Result{}, err
+		cleanup()
+		return nil, err
 	}
-	metadata = managed.WithRelease(release.Version, releaseChannel(release)).Metadata
+	metadata := plan.managed.WithRelease(plan.release.Version, releaseChannel(plan.release)).Metadata
 	if metadata.Executable == "" {
-		metadata.Executable = u.Executable
+		metadata.Executable = plan.executable
 	}
 	if u.ReplaceTransaction != nil {
-		updaterPath := filepath.Join(filepath.Dir(u.Executable), "okit-updater.exe")
+		updaterPath := filepath.Join(filepath.Dir(plan.executable), "okit-updater.exe")
 		found := false
 		for _, file := range metadata.ManagedFiles {
 			if filepath.Clean(file) == filepath.Clean(updaterPath) {
@@ -230,51 +269,70 @@ func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressRep
 			metadata.ManagedFiles = append(metadata.ManagedFiles, updaterPath)
 		}
 	}
-	reportProgress(progress, Progress{Stage: ProgressReplace, Version: release.Version})
-	var scheduled bool
+	prepared.staged, prepared.metadata = staged, metadata
 	if u.ReplaceTransaction != nil {
+		currentUpdater := filepath.Join(filepath.Dir(plan.executable), "okit-updater.exe")
 		stagedUpdater := filepath.Join(filepath.Dir(staged), "okit-updater.exe")
-		currentUpdater := filepath.Join(filepath.Dir(u.Executable), "okit-updater.exe")
-		if _, statErr := os.Stat(currentUpdater); statErr != nil {
-			return Result{}, fmt.Errorf("SELF_UPDATE_MIGRATION_REQUIRED: install the current release once with install.ps1 before upgrading")
-		}
-		tx := UpdateTransaction{Schema: 1, State: TransactionPrepared, OKITHome: u.OKITHome,
-			TransactionDir: filepath.Dir(staged), Current: u.Executable,
+		transaction := &UpdateTransaction{Schema: 1, State: TransactionPrepared, OKITHome: u.OKITHome,
+			TransactionDir: filepath.Dir(staged), Current: plan.executable,
 			CurrentUpdater: currentUpdater,
 			Staged:         staged, StagedUpdater: stagedUpdater,
 			Backup:        filepath.Join(filepath.Dir(staged), "okit.exe.old"),
 			UpdaterBackup: filepath.Join(filepath.Dir(staged), "okit-updater.exe.old"),
 			OldMetadata:   metadata, NewMetadata: metadata, WaitPID: os.Getpid()}
 		if old, e := LoadMetadata(u.OKITHome); e == nil {
-			tx.OldMetadata = old
+			transaction.OldMetadata = old
 		}
-		tx.StagedSHA256, err = fileSHA256(staged)
+		transaction.StagedSHA256, err = fileSHA256(staged)
 		if err != nil {
-			return Result{}, err
+			cleanup()
+			return nil, err
 		}
-		tx.UpdaterSHA256, err = fileSHA256(stagedUpdater)
+		transaction.UpdaterSHA256, err = fileSHA256(stagedUpdater)
 		if err != nil {
-			return Result{}, err
+			cleanup()
+			return nil, err
 		}
-		scheduled, err = u.ReplaceTransaction(tx)
+		prepared.transaction = transaction
+	}
+	return prepared, nil
+}
+
+func (u *Lifecycle) apply(plan lifecyclePlan, prepared *preparedUpgrade, progress ProgressReporter) (Result, error) {
+	removeStaging := true
+	defer func() {
+		if removeStaging {
+			_ = os.RemoveAll(prepared.stagingDir)
+		}
+	}()
+	reportProgress(progress, Progress{Stage: ProgressReplace, Version: plan.release.Version})
+	var scheduled bool
+	var err error
+	if u.ReplaceTransaction != nil {
+		currentUpdater := filepath.Join(filepath.Dir(plan.executable), "okit-updater.exe")
+		if _, statErr := os.Stat(currentUpdater); statErr != nil {
+			return Result{}, fmt.Errorf("SELF_UPDATE_MIGRATION_REQUIRED: install the current release once with install.ps1 before upgrading")
+		}
+		scheduled, err = u.ReplaceTransaction(*prepared.transaction)
 	} else {
-		scheduled, err = u.Replace(u.Executable, staged)
+		scheduled, err = u.Replace(plan.executable, prepared.staged)
 	}
 	if err != nil {
 		return Result{}, err
 	}
 	removeStaging = !scheduled
 	if !scheduled {
-		if err := SaveMetadata(u.OKITHome, metadata); err != nil {
+		if err := SaveMetadata(u.OKITHome, prepared.metadata); err != nil {
 			return Result{}, err
 		}
 	}
+	result := plan.result
 	if scheduled {
 		result.Status = StatusScheduled
 	} else {
 		result.Status = StatusApplied
 	}
-	reportProgress(progress, Progress{Stage: ProgressComplete, Version: release.Version, Scheduled: scheduled})
+	reportProgress(progress, Progress{Stage: ProgressComplete, Version: plan.release.Version, Scheduled: scheduled})
 	return result, nil
 }
 

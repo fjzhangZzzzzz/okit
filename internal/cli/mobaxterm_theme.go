@@ -83,7 +83,7 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 			}
 			presenter := newPresenter(cmd, global)
 			if !confirmMobaAction(cmd.InOrStdin(), presenter, dryRun, force, mobaThemeApplyPrompt()) {
-				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消应用主题", Summary: "未作任何更改。"}, Machine: mobaThemeApplyResult{mobaActionResult: newMobaActionResult("theme_apply", "cancelled", false, false), Theme: args[0], ConfigPath: selected.candidate.ConfigPath}})
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消应用主题", Summary: "未作任何更改。"}, Machine: mobaThemeApplyResult{mobaActionResult: mobaCancelledResult("theme_apply"), Theme: args[0], ConfigPath: selected.candidate.ConfigPath}})
 			}
 			var result theme.Result
 			if noBackup {
@@ -104,7 +104,7 @@ func newMobaThemeApplyCommand(global *globalOptions) *cobra.Command {
 			}
 			return presenter.Render(clioutput.View{
 				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "主题", Value: args[0]}, {Label: "配置文件", Value: selected.candidate.ConfigPath}, {Label: "备份", Value: result.BackupPath}}, Summary: summary},
-				Machine: mobaThemeApplyResult{mobaActionResult: newMobaActionResult("theme_apply", themeStatus(dryRun, result.Changed), result.Changed, dryRun), Theme: args[0], ConfigPath: selected.candidate.ConfigPath, BackupPath: result.BackupPath},
+				Machine: mobaThemeApplyResult{mobaActionResult: mobaMutationResult("theme_apply", dryRun, result.Changed), Theme: args[0], ConfigPath: selected.candidate.ConfigPath, BackupPath: result.BackupPath},
 			})
 		},
 	}
@@ -136,7 +136,7 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 			}
 			presenter := newPresenter(cmd, global)
 			if !confirmMobaAction(cmd.InOrStdin(), presenter, dryRun, force, mobaThemeRestorePrompt()) {
-				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消还原主题", Summary: "未作任何更改。"}, Machine: mobaThemeRestoreResult{mobaActionResult: newMobaActionResult("theme_restore", "cancelled", false, false), BackupPath: selected, ConfigPath: selectedInstallation.candidate.ConfigPath}})
+				return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消还原主题", Summary: "未作任何更改。"}, Machine: mobaThemeRestoreResult{mobaActionResult: mobaCancelledResult("theme_restore"), BackupPath: selected, ConfigPath: selectedInstallation.candidate.ConfigPath}})
 			}
 			if err := theme.Restore(selectedInstallation.candidate.ConfigPath, selected, dryRun); err != nil {
 				return runError(err)
@@ -149,7 +149,7 @@ func newMobaThemeRestoreCommand(global *globalOptions) *cobra.Command {
 			}
 			return presenter.Render(clioutput.View{
 				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "备份", Value: selected}, {Label: "配置文件", Value: selectedInstallation.candidate.ConfigPath}}, Summary: summary},
-				Machine: mobaThemeRestoreResult{mobaActionResult: newMobaActionResult("theme_restore", plannedOrCompleted(dryRun), !dryRun, dryRun), BackupPath: selected, ConfigPath: selectedInstallation.candidate.ConfigPath},
+				Machine: mobaThemeRestoreResult{mobaActionResult: mobaMutationResult("theme_restore", dryRun, true), BackupPath: selected, ConfigPath: selectedInstallation.candidate.ConfigPath},
 			})
 		},
 	}
@@ -219,14 +219,5 @@ func newMobaThemeCacheAction(action, description string, global *globalOptions) 
 func mobaThemeCache(home string) string   { return filepath.Join(home, "cache", "mobaxterm", "themes") }
 func mobaThemeBackups(home string) string { return filepath.Join(home, "backups", "mobaxterm") }
 
-func themeStatus(dryRun, changed bool) string {
-	if dryRun {
-		return "planned"
-	}
-	if changed {
-		return "updated"
-	}
-	return "unchanged"
-}
 func mobaThemeApplyPrompt() string   { return "要应用选定的 MobaXterm 主题吗？" }
 func mobaThemeRestorePrompt() string { return "要还原 MobaXterm 配置备份吗？" }

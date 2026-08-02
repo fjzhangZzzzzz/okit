@@ -10,8 +10,36 @@ type mobaActionResult struct {
 	Plan          bool   `json:"plan"`
 }
 
-func newMobaActionResult(action, status string, changed, plan bool) mobaActionResult {
-	return mobaActionResult{SchemaVersion: 1, Action: action, Status: status, Changed: changed, Plan: plan}
+const (
+	mobaStatusPlanned   = "planned"
+	mobaStatusCancelled = "cancelled"
+	mobaStatusCompleted = "completed"
+	mobaStatusUnchanged = "unchanged"
+)
+
+func newMobaActionResult(action, status string) mobaActionResult {
+	result := mobaActionResult{SchemaVersion: 1, Action: action, Status: status}
+	switch status {
+	case mobaStatusPlanned:
+		result.Plan = true
+	case mobaStatusCompleted:
+		result.Changed = true
+	}
+	return result
+}
+
+func mobaMutationResult(action string, dryRun, changed bool) mobaActionResult {
+	if dryRun {
+		return newMobaActionResult(action, mobaStatusPlanned)
+	}
+	if changed {
+		return newMobaActionResult(action, mobaStatusCompleted)
+	}
+	return newMobaActionResult(action, mobaStatusUnchanged)
+}
+
+func mobaCancelledResult(action string) mobaActionResult {
+	return newMobaActionResult(action, mobaStatusCancelled)
 }
 
 type mobaThemeApplyResult struct {

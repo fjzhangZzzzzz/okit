@@ -1,6 +1,7 @@
 package installation
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,7 +17,52 @@ type UninstallResult struct {
 	Plan      []string
 	Scheduled bool
 }
+type UninstallJob struct {
+	Executable string `json:"executable"`
+	Updater    string `json:"updater"`
+	Home       string `json:"home"`
+	Purge      bool   `json:"purge"`
+	WaitPID    int    `json:"wait_pid"`
+}
 type Uninstaller struct{ OKITHome, Executable string }
+
+func ValidateUninstallJob(jobPath string, job UninstallJob) error {
+	if job.Home == "" || filepath.Base(job.Executable) != "okit.exe" || filepath.Base(job.Updater) != "okit-updater.exe" {
+		return fmt.Errorf("invalid uninstall job")
+	}
+	root, err := filepath.Abs(job.Home)
+	if err != nil {
+		return fmt.Errorf("invalid uninstall home: %w", err)
+	}
+	dir, err := filepath.Abs(filepath.Dir(jobPath))
+	if err != nil {
+		return fmt.Errorf("invalid uninstall job path: %w", err)
+	}
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("uninstall job is outside OKIT_HOME")
+	}
+	if filepath.Clean(job.Updater) != filepath.Join(filepath.Dir(job.Executable), "okit-updater.exe") {
+		return fmt.Errorf("uninstall files are not paired")
+	}
+	return nil
+}
+
+func ExecuteUninstallJob(job UninstallJob) error {
+	return executeUninstallJob(job)
+}
+
+func ReadUninstallJob(path string) (UninstallJob, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return UninstallJob{}, err
+	}
+	var job UninstallJob
+	if err := json.Unmarshal(data, &job); err != nil {
+		return UninstallJob{}, err
+	}
+	return job, nil
+}
 
 func (u *Uninstaller) Uninstall(options UninstallOptions) (UninstallResult, error) {
 	metadata := Metadata{}

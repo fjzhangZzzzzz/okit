@@ -4,11 +4,9 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/fjzhangZzzzzz/okit/internal/installation"
 	"golang.org/x/sys/windows"
@@ -17,13 +15,6 @@ import (
 type result struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
-}
-type uninstallJob struct {
-	Executable string `json:"executable"`
-	Updater    string `json:"updater"`
-	Home       string `json:"home"`
-	Purge      bool   `json:"purge"`
-	WaitPID    int    `json:"wait_pid"`
 }
 
 func main() {
@@ -48,11 +39,7 @@ func main() {
 }
 
 func runUninstall(path string) {
-	data, err := os.ReadFile(path)
-	var job uninstallJob
-	if err == nil {
-		err = json.Unmarshal(data, &job)
-	}
+	job, err := installation.ReadUninstallJob(path)
 	if err == nil {
 		err = validateUninstallJob(path, job)
 	}
@@ -60,13 +47,7 @@ func runUninstall(path string) {
 		err = waitForProcess(job.WaitPID)
 	}
 	if err == nil {
-		_ = os.Remove(job.Executable)
-		_ = os.Remove(job.Updater)
-		if job.Purge {
-			err = os.RemoveAll(job.Home)
-		} else {
-			_ = os.Remove(filepath.Join(job.Home, "install.json"))
-		}
+		err = installation.ExecuteUninstallJob(job)
 	}
 	if err != nil {
 		_ = writeResult(path, result{Code: "UNINSTALL_FAILED", Message: err.Error()})
@@ -74,20 +55,8 @@ func runUninstall(path string) {
 	}
 }
 
-func validateUninstallJob(jobPath string, job uninstallJob) error {
-	if job.Home == "" || filepath.Base(job.Executable) != "okit.exe" || filepath.Base(job.Updater) != "okit-updater.exe" {
-		return fmt.Errorf("invalid uninstall job")
-	}
-	root, _ := filepath.Abs(job.Home)
-	dir, _ := filepath.Abs(filepath.Dir(jobPath))
-	rel, err := filepath.Rel(root, dir)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("uninstall job is outside OKIT_HOME")
-	}
-	if filepath.Clean(job.Updater) != filepath.Join(filepath.Dir(job.Executable), "okit-updater.exe") {
-		return fmt.Errorf("uninstall files are not paired")
-	}
-	return nil
+func validateUninstallJob(jobPath string, job installation.UninstallJob) error {
+	return installation.ValidateUninstallJob(jobPath, job)
 }
 
 func waitForProcess(pid int) error {

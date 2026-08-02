@@ -3,6 +3,7 @@
 package installation
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,12 +11,6 @@ import (
 	"strings"
 	"syscall"
 )
-
-type UninstallJob struct {
-	Executable, Updater, Home string
-	Purge                     bool
-	WaitPID                   int
-}
 
 func removePathEntries(entries []string) error {
 	if len(entries) == 0 {
@@ -69,7 +64,10 @@ func scheduleUninstall(executable, home string, purge bool) (bool, error) {
 		return false, err
 	}
 	job := filepath.Join(dir, "uninstall.json")
-	data := []byte(fmt.Sprintf(`{"executable":%q,"updater":%q,"home":%q,"purge":%t,"wait_pid":%d}`, executable, updater, home, purge, os.Getpid()))
+	data, err := json.Marshal(UninstallJob{Executable: executable, Updater: updater, Home: home, Purge: purge, WaitPID: os.Getpid()})
+	if err != nil {
+		return false, err
+	}
 	if err := os.WriteFile(job, data, 0o600); err != nil {
 		return false, err
 	}
@@ -80,6 +78,22 @@ func scheduleUninstall(executable, home string, purge bool) (bool, error) {
 	}
 	_ = command.Process.Release()
 	return true, nil
+}
+
+func executeUninstallJob(job UninstallJob) error {
+	if err := os.Remove(job.Executable); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Remove(job.Updater); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if job.Purge {
+		return os.RemoveAll(job.Home)
+	}
+	if err := os.Remove(metadataPath(job.Home)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func copyFile(src, dst string) error {

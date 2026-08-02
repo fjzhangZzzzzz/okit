@@ -32,3 +32,31 @@ func TestMobaConfirmationOnlyAppliesToWrites(t *testing.T) {
 		}
 	}
 }
+
+func TestMobaMutationResultUsesStableStatusSemantics(t *testing.T) {
+	tests := []struct {
+		name                  string
+		dryRun, changed       bool
+		status                string
+		wantChanged, wantPlan bool
+	}{
+		{name: "plan", dryRun: true, changed: true, status: mobaStatusPlanned, wantPlan: true},
+		{name: "completed", changed: true, status: mobaStatusCompleted, wantChanged: true},
+		{name: "unchanged", status: mobaStatusUnchanged},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := mobaMutationResult("theme_apply", test.dryRun, test.changed)
+			if result.Status != test.status || result.Changed != test.wantChanged || result.Plan != test.wantPlan {
+				t.Fatalf("result=%+v", result)
+			}
+		})
+	}
+}
+
+func TestMobaCancelledResultPreservesActionAndPayloadContract(t *testing.T) {
+	result := mobaCancelledResult("license_deploy")
+	if result.Action != "license_deploy" || result.Status != mobaStatusCancelled || result.Changed || result.Plan || result.SchemaVersion != 1 {
+		t.Fatalf("result=%+v", result)
+	}
+}

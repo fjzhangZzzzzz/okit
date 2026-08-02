@@ -300,6 +300,22 @@ func TestLifecycleCheckHasNoSideEffects(t *testing.T) {
 	}
 }
 
+func TestLifecyclePlanDoesNotMutateDependencies(t *testing.T) {
+	lifecycle := NewLifecycle(Dependencies{
+		OKITHome: t.TempDir(),
+		Metadata: &Metadata{Method: "official", Version: "v1.0.0", Executable: "okit"},
+		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0"}}},
+	})
+	for _, mode := range []Mode{ModeCheck, ModeDryRun} {
+		if _, err := lifecycle.Run(context.Background(), Intent{Mode: mode}, nil); err != nil {
+			t.Fatalf("mode=%v: %v", mode, err)
+		}
+	}
+	if lifecycle.CurrentVersion != "" || lifecycle.Executable != "" {
+		t.Fatalf("planning mutated dependencies: current=%q executable=%q", lifecycle.CurrentVersion, lifecycle.Executable)
+	}
+}
+
 func TestUpToDateCheckIsSuccessful_SELF001(t *testing.T) {
 	lifecycle := NewLifecycle(Dependencies{
 		CurrentVersion: "v1.0.0",

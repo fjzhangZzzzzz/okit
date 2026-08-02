@@ -58,12 +58,12 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{"formats": "table,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if username == "" {
+				return usageError("deploy 需要 --username")
+			}
 			selected, err := selectMobaInstallation()
 			if err != nil {
 				return err
-			}
-			if username == "" {
-				return usageError("deploy 需要 --username")
 			}
 			presenter := newPresenter(cmd, global)
 			if needsMobaConfirmation(dryRun, force) {
@@ -72,7 +72,7 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 					return runError(err)
 				}
 				if !confirmMobaAction(cmd.InOrStdin(), presenter, dryRun, force, mobaLicenseDeployPrompt(plan)) {
-					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消部署许可证", Summary: "未作任何更改。"}, Machine: mobaLicenseDeployResult{mobaActionResult: newMobaActionResult("license_deploy", "cancelled", false, false), Username: username, Version: version}})
+					return presenter.Render(clioutput.View{Human: clioutput.Document{Title: "已取消部署许可证", Summary: "未作任何更改。"}, Machine: mobaLicenseDeployResult{mobaActionResult: mobaCancelledResult("license_deploy"), Username: username, Version: version}})
 				}
 			}
 			result, err := selected.service.DeployLicenseTo(selected.candidate, username, version, dryRun)
@@ -87,7 +87,7 @@ func newMobaLicenseDeployCommand(global *globalOptions) *cobra.Command {
 			}
 			return presenter.Render(clioutput.View{
 				Human:   clioutput.Document{Title: title, Fields: []clioutput.Field{{Label: "用户名", Value: username}, {Label: "版本", Value: version}, {Label: "结果", Value: mobaLicenseDeploymentSummary(result)}}, Summary: summary},
-				Machine: mobaLicenseDeployResult{mobaActionResult: newMobaActionResult("license_deploy", plannedOrCompleted(dryRun), !dryRun, dryRun), Username: username, Version: version, Result: result},
+				Machine: mobaLicenseDeployResult{mobaActionResult: mobaMutationResult("license_deploy", dryRun, true), Username: username, Version: version, Result: result},
 			})
 		},
 	}
@@ -155,13 +155,6 @@ func newMobaLicenseVerifyCommand(global *globalOptions) *cobra.Command {
 	command.Flags().StringVar(&username, "username", "", "预期的授权用户名")
 	command.Flags().StringVar(&version, "version", "", "预期的 MobaXterm 版本")
 	return command
-}
-
-func plannedOrCompleted(dryRun bool) string {
-	if dryRun {
-		return "planned"
-	}
-	return "completed"
 }
 
 func readLicenseArgument(value string) (string, error) {
