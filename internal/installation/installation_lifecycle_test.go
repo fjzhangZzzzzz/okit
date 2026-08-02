@@ -80,19 +80,11 @@ func TestReleaseSelection_SELF001_SELF002(t *testing.T) {
 	if err != nil || selected.Version != "v1.2.0" {
 		t.Fatalf("selected=%+v err=%v", selected, err)
 	}
-	selected, err = SelectRelease("v1.2.0", releases, Intent{IncludePrerelease: true})
-	if err != nil || selected.Version != "v1.3.0" {
-		t.Fatalf("prerelease selected=%+v err=%v", selected, err)
-	}
 	if _, err := SelectRelease("v1.2.0", releases, Intent{Version: "v1.1.0"}); err != nil {
 		t.Fatalf("explicit downgrade rejected: %v", err)
 	}
 	if _, err := SelectRelease("v1.2.0", []Release{{Version: "v1.1.0"}}, Intent{}); err == nil {
 		t.Fatal("implicit downgrade accepted")
-	}
-	selected, err = SelectRelease("v1.2.0", []Release{{Version: "v1.3.0", Prerelease: true}, {Version: "v1.4.0", Prerelease: true}}, Intent{IncludePrerelease: true})
-	if err != nil || selected.Version != "v1.4.0" {
-		t.Fatalf("semantic ordering selected=%+v err=%v", selected, err)
 	}
 }
 
@@ -103,6 +95,19 @@ func TestReleaseChannel(t *testing.T) {
 	} {
 		if got := releaseChannel(release); got != want {
 			t.Errorf("releaseChannel(%+v) = %q, want %q", release, got, want)
+		}
+	}
+}
+
+func TestValidateVersionAcceptsOnlyStableAndReleaseCandidates(t *testing.T) {
+	for _, version := range []string{"v2.0.0", "v2.0.0-rc.1"} {
+		if err := ValidateVersion(version); err != nil {
+			t.Errorf("ValidateVersion(%q)=%v", version, err)
+		}
+	}
+	for _, version := range []string{"2.0.0", "v2.0.0-beta.1", "v2.0.0-rc.0"} {
+		if err := ValidateVersion(version); err == nil {
+			t.Errorf("ValidateVersion(%q) unexpectedly succeeded", version)
 		}
 	}
 }
@@ -369,20 +374,20 @@ func TestLifecycleReportsProgressStages(t *testing.T) {
 	lifecycle := NewLifecycle(Dependencies{
 		CurrentVersion: "v1.0.0", Executable: filepath.Join(root, "okit.exe"), OKITHome: filepath.Join(root, "home"),
 		Metadata: &Metadata{Method: "official"},
-		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0", Prerelease: true, AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
+		Source:   &fakeSource{releases: []Release{{Version: "v1.1.0", AssetName: "okit.zip", AssetURL: "asset", ChecksumsURL: "sum"}}},
 		Downloader: fakeDownload{data: map[string][]byte{
 			"asset": archive.Bytes(), "sum": []byte(fmt.Sprintf("%x  okit.zip\n", digest)),
 		}},
 		Replace: func(_, _ string) (bool, error) { return false, nil },
 	})
-	_, err = lifecycle.Run(context.Background(), Intent{IncludePrerelease: true}, ProgressFunc(func(progress Progress) {
+	_, err = lifecycle.Run(context.Background(), Intent{}, ProgressFunc(func(progress Progress) {
 		stages = append(stages, progress.Stage)
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	metadata, err := LoadMetadata(filepath.Join(root, "home"))
-	if err != nil || metadata.Channel != "prerelease" {
+	if err != nil || metadata.Channel != "stable" {
 		t.Fatalf("metadata=%+v err=%v", metadata, err)
 	}
 	want := []ProgressStage{ProgressUpdateAvailable, ProgressDownloadAsset, ProgressDownloadChecksum, ProgressVerifyChecksum, ProgressExtract, ProgressReplace, ProgressComplete}

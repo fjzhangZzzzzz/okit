@@ -12,16 +12,13 @@ import (
 
 const (
 	defaultReleaseBaseURL = "https://github.com/fjzhangZzzzzz/okit/releases"
-	defaultChannelBaseURL = "https://fjzhangzzzzzz.github.io/okit"
 )
 
 type ManifestSource struct {
 	GOOS, GOARCH string
 	Version      string
-	Prerelease   bool
 	Client       *http.Client
 	ReleaseBase  string
-	ChannelBase  string
 }
 
 func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
@@ -48,9 +45,6 @@ func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
 		return nil, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode == http.StatusNotFound && s.Prerelease && s.Version == "" {
-		return nil, ErrNoPrerelease
-	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("release manifest: HTTP %s", response.Status)
 	}
@@ -69,7 +63,7 @@ func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
 	downloadBase := base + "/download/" + manifest.Version
 	return []Release{{
 		Version:      manifest.Version,
-		Prerelease:   s.Prerelease,
+		Prerelease:   strings.Contains(manifest.Version, "-rc."),
 		AssetName:    asset,
 		AssetURL:     downloadBase + "/" + asset,
 		ChecksumsURL: downloadBase + "/" + manifest.Checksums,
@@ -79,13 +73,6 @@ func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
 func (s ManifestSource) manifestURL(base string) string {
 	if s.Version != "" {
 		return base + "/download/" + s.Version + "/release-manifest.json"
-	}
-	if s.Prerelease {
-		channelBase := strings.TrimRight(s.ChannelBase, "/")
-		if channelBase == "" {
-			channelBase = defaultChannelBaseURL
-		}
-		return channelBase + "/channels/prerelease/release-manifest.json"
 	}
 	return base + "/latest/download/release-manifest.json"
 }

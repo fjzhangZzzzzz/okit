@@ -8,7 +8,6 @@ import (
 )
 
 var ErrNoUpdate = errors.New("no update available")
-var ErrNoPrerelease = errors.New("no prerelease is available")
 
 type semanticVersion struct {
 	major, minor, patch int
@@ -16,6 +15,9 @@ type semanticVersion struct {
 }
 
 func ValidateVersion(value string) error {
+	if !strings.HasPrefix(value, "v") {
+		return fmt.Errorf("invalid semantic version %q", value)
+	}
 	_, err := parseVersion(value)
 	return err
 }
@@ -38,7 +40,11 @@ func parseVersion(value string) (semanticVersion, error) {
 	}
 	if len(parts) == 2 {
 		parsed.prerelease = parts[1]
-		if parsed.prerelease == "" {
+		if parsed.prerelease == "" || !strings.HasPrefix(parsed.prerelease, "rc.") {
+			return semanticVersion{}, fmt.Errorf("invalid semantic version %q", value)
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(parsed.prerelease, "rc."))
+		if err != nil || n < 1 || strings.HasPrefix(strings.TrimPrefix(parsed.prerelease, "rc."), "0") {
 			return semanticVersion{}, fmt.Errorf("invalid semantic version %q", value)
 		}
 	}
@@ -116,7 +122,7 @@ func SelectRelease(current string, releases []Release, intent Intent) (Release, 
 	var selected Release
 	var selectedVersion semanticVersion
 	for _, release := range releases {
-		if release.Prerelease && !intent.IncludePrerelease {
+		if release.Prerelease {
 			continue
 		}
 		parsed, err := parseVersion(release.Version)

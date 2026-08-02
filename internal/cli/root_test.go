@@ -141,9 +141,17 @@ func TestUpgradeParsesDocumentedOptions(t *testing.T) {
 	app := New("v1.0.0")
 	app.upgradeRunner = runner
 	var stdout, stderr bytes.Buffer
-	code := app.Run([]string{"upgrade", "--check", "--version", "v1.1.0", "--prerelease", "--dry-run"}, &stdout, &stderr)
-	if code != 0 || runner.intent.Mode != installation.ModeDryRun || !runner.intent.IncludePrerelease || runner.intent.Version != "v1.1.0" {
+	code := app.Run([]string{"upgrade", "--check", "--version", "v1.1.0-rc.2", "--dry-run"}, &stdout, &stderr)
+	if code != 0 || runner.intent.Mode != installation.ModeDryRun || runner.intent.Version != "v1.1.0-rc.2" {
 		t.Fatalf("code=%d intent=%+v stdout=%q stderr=%q", code, runner.intent, stdout.String(), stderr.String())
+	}
+}
+
+func TestUpgradeRejectsPrereleaseFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := New("v1.0.0").Run([]string{"upgrade", "--prerelease"}, &stdout, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "未知选项 --prerelease") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
 

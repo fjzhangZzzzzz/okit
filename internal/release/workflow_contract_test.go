@@ -7,12 +7,12 @@ import (
 
 func TestWorkflowSeparatesRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	workflow := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"release:", "published, released", "cmd/release-manifest", "actions/upload-pages-artifact@v4", "actions/deploy-pages@v4", "channels/prerelease", "install.ps1", "install.sh", "gh release view", "直接发布正式版本"} {
+	for _, required := range []string{"release:", "published, released", "cmd/release-manifest", "install.ps1", "install.sh", "gh release view", "直接发布正式版本", "GORELEASER_CURRENT_TAG", "release-publish"} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("发布工作流不包含 %q", required)
 		}
 	}
-	for _, removed := range []string{"gh release create pre-release", "gh release upload pre-release", "releases/download/pre-release"} {
+	for _, removed := range []string{"actions/upload-pages-artifact", "actions/deploy-pages", "pages: write", "id-token: write", "channels/prerelease", "CHANNEL_BASE"} {
 		if strings.Contains(workflow, removed) {
 			t.Errorf("发布工作流不应再使用固定预发布 Release: %q", removed)
 		}

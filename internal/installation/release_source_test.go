@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -39,34 +38,31 @@ func TestManifestSourceResolvesLatestWithoutAPI(t *testing.T) {
 		t.Fatalf("releases=%v", releases)
 	}
 	release := releases[0]
-	if release.Version != "v2.0.0" || release.AssetName != "okit_2.0.0_windows_amd64.zip" {
+	if release.Version != "v2.0.0" || release.AssetName != "okit_2.0.0_windows_amd64.zip" || release.Prerelease {
 		t.Fatalf("release=%+v", release)
-	}
-	if release.AssetURL != server.URL+"/releases/download/v2.0.0/okit_2.0.0_windows_amd64.zip" {
-		t.Fatalf("asset URL=%q", release.AssetURL)
 	}
 }
 
 func TestManifestSourceUsesAndValidatesExplicitVersion(t *testing.T) {
-	manifest, _ := release.NewManifest("v2.0.1")
+	manifest, _ := release.NewManifest("v2.0.1-rc.2")
 	data, _ := release.MarshalManifest(manifest)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/releases/download/v2.0.0/release-manifest.json" {
+		if r.URL.Path != "/releases/download/v2.0.0-rc.2/release-manifest.json" {
 			t.Errorf("requested %q", r.URL.Path)
 		}
 		_, _ = w.Write(data)
 	}))
 	defer server.Close()
 
-	source := ManifestSource{GOOS: "linux", GOARCH: "amd64", Version: "v2.0.0", Client: server.Client(), ReleaseBase: server.URL + "/releases"}
+	source := ManifestSource{GOOS: "linux", GOARCH: "amd64", Version: "v2.0.0-rc.2", Client: server.Client(), ReleaseBase: server.URL + "/releases"}
 	_, err := source.Releases(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "does not match requested version") {
 		t.Fatalf("error=%v", err)
 	}
 }
 
-func TestManifestSourceResolvesPrereleaseChannelWithoutAPI(t *testing.T) {
-	manifest, _ := release.NewManifest("v2.0.1")
+func TestManifestSourceResolvesExplicitPrereleaseWithoutAPI(t *testing.T) {
+	manifest, _ := release.NewManifest("v2.0.1-rc.2")
 	data, _ := release.MarshalManifest(manifest)
 	var requested string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -75,47 +71,9 @@ func TestManifestSourceResolvesPrereleaseChannelWithoutAPI(t *testing.T) {
 	}))
 	defer server.Close()
 
-	releases, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases", ChannelBase: server.URL}).Releases(context.Background())
-	if err != nil || requested != "/channels/prerelease/release-manifest.json" || !releases[0].Prerelease {
+	releases, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Version: "v2.0.1-rc.2", Client: server.Client(), ReleaseBase: server.URL + "/releases"}).Releases(context.Background())
+	if err != nil || requested != "/releases/download/v2.0.1-rc.2/release-manifest.json" || !releases[0].Prerelease {
 		t.Fatalf("releases=%+v requested=%q err=%v", releases, requested, err)
-	}
-}
-
-func TestManifestSourceUsesPublishedPrereleaseChannelByDefault(t *testing.T) {
-	source := ManifestSource{Prerelease: true}
-	want := "https://fjzhangzzzzzz.github.io/okit/channels/prerelease/release-manifest.json"
-	if got := source.manifestURL("https://github.com/fjzhangZzzzzz/okit/releases"); got != want {
-		t.Fatalf("manifest URL=%q, want %q", got, want)
-	}
-}
-
-func TestManifestSourceTreatsMissingPrereleasePointerAsNoUpdate(t *testing.T) {
-	server := httptest.NewServer(http.NotFoundHandler())
-	defer server.Close()
-	_, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases", ChannelBase: server.URL}).Releases(context.Background())
-	if !errors.Is(err, ErrNoPrerelease) {
-		t.Fatalf("err=%v", err)
-	}
-}
-
-func TestManifestSourceUsesManifestsForEveryChannel(t *testing.T) {
-	client := &http.Client{}
-	tests := []struct {
-		intent         Intent
-		wantPrerelease bool
-	}{
-		{Intent{}, false},
-		{Intent{Version: "v2.0.0"}, false},
-		{Intent{Version: "v2.1.0", IncludePrerelease: true}, false},
-		{Intent{IncludePrerelease: true}, true},
-	}
-	for _, test := range tests {
-		t.Run(fmt.Sprintf("%+v", test.intent), func(t *testing.T) {
-			source := ManifestSource{GOOS: "linux", GOARCH: "amd64", Version: test.intent.Version, Prerelease: test.intent.IncludePrerelease && test.intent.Version == "", Client: client}
-			if source.Prerelease != test.wantPrerelease {
-				t.Fatalf("prerelease=%t, want %t", source.Prerelease, test.wantPrerelease)
-			}
-		})
 	}
 }
 

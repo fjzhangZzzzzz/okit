@@ -10,8 +10,8 @@ import (
 )
 
 type upgradeOptions struct {
-	check, dryRun, prerelease bool
-	version                   string
+	check, dryRun bool
+	version       string
 }
 
 // upgradeWorkflow 将用户的更新意图转换为稳定的升级结果。
@@ -77,9 +77,8 @@ func (w upgradeWorkflow) Run(ctx context.Context) (upgradeResult, error) {
 		progress = &terminalUpdateProgress{writer: w.stderr}
 	}
 	lifecycleResult, err := runner.Run(ctx, installation.Intent{
-		Mode:              w.lifecycleMode(),
-		Version:           w.options.version,
-		IncludePrerelease: w.options.prerelease,
+		Mode:    w.lifecycleMode(),
+		Version: w.options.version,
 	}, progress)
 	if err != nil {
 		var failure *installation.Failure

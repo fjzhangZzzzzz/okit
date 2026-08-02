@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 function Write-Phase([string]$Message) { Write-Host "`n==> $Message" }
 function Fail([string]$Message) { throw $Message }
 
-if ($Version -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { Fail "版本号无效：$Version" }
+if ($Version -notmatch '^v\d+\.\d+\.\d+(?:-rc\.[1-9][0-9]*)?$') { Fail "版本号无效：$Version" }
 if ($Mode -eq 'binary' -and -not $Binary) { Fail 'binary 模式需要 -Binary PATH' }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot

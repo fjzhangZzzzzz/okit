@@ -6,7 +6,7 @@
 okit mobaxterm status
 okit mobaxterm theme <list|apply|restore|cache>
 okit mobaxterm license <generate|deploy|inspect|verify>
-okit upgrade [--check] [--version VERSION] [--prerelease] [--dry-run]
+okit upgrade [--check] [--version VERSION] [--dry-run]
 okit uninstall [--purge] [--yes] [--dry-run]
 ```
 

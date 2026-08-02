@@ -22,7 +22,7 @@ function Assert-SafeFilename([string]$Name, [string]$Kind) {
 try {
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'okit requires a 64-bit Windows system' }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
-if ($requestedVersion -and $requestedVersion -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid -Version: $requestedVersion" }
+if ($requestedVersion -and $requestedVersion -notmatch '^v\d+\.\d+\.\d+(?:-rc\.[1-9][0-9]*)?$') { throw "Invalid -Version: $requestedVersion" }
 
 Write-Status $(if ($requestedVersion) { "正在获取 $requestedVersion 版本信息" } else { '正在获取最新版本信息' })
 $manifestURL = if ($requestedVersion) {
@@ -33,7 +33,7 @@ $manifestURL = if ($requestedVersion) {
 $manifest = Invoke-RestMethod -Uri $manifestURL
 if ($manifest.schema -ne 1) { throw "Unsupported release manifest schema: $($manifest.schema)" }
 $version = [string]$manifest.version
-if ($version -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid version in release manifest: $version" }
+if ($version -notmatch '^v\d+\.\d+\.\d+(?:-rc\.[1-9][0-9]*)?$') { throw "Invalid version in release manifest: $version" }
 if ($requestedVersion -and $version -ne $requestedVersion) { throw "Release manifest version $version does not match requested version $requestedVersion" }
 $channel = if ($version -like '*-*') { 'prerelease' } else { 'stable' }
 $target = "windows-$arch"

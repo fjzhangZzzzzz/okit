@@ -24,7 +24,7 @@ func (r installationRuntime) upgradeRunner(options upgradeOptions) (upgradeRunne
 		return nil, err
 	}
 	return installation.NewLifecycle(installation.Dependencies{CurrentVersion: r.app.version, Executable: executable, OKITHome: home,
-		Source:     installation.ManifestSource{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Version: options.version, Prerelease: options.prerelease && options.version == "", Client: &http.Client{Timeout: 30 * time.Second}},
+		Source:     installation.ManifestSource{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Version: options.version, Client: &http.Client{Timeout: 30 * time.Second}},
 		Downloader: installation.HTTPDownloader{Client: &http.Client{Timeout: 2 * time.Minute}}, Replace: installation.PlatformReplace, ReplaceTransaction: installation.NativeTransactionReplace()}), nil
 }
 func (r installationRuntime) uninstaller() (selfUninstaller, error) {

@@ -12,7 +12,7 @@ import (
 const Schema = 1
 
 var (
-	versionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
+	versionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[1-9][0-9]*)?$`)
 	assetPattern   = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._-]*$`)
 )
 

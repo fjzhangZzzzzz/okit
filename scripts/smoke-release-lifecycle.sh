@@ -4,8 +4,8 @@ set -eu
 usage() {
   cat <<'EOF'
 用法：
-  scripts/smoke-release-lifecycle.sh --release --version vMAJOR.MINOR.PATCH
-  scripts/smoke-release-lifecycle.sh --binary PATH --version vMAJOR.MINOR.PATCH
+  scripts/smoke-release-lifecycle.sh --release --version vMAJOR.MINOR.PATCH[-rc.N]
+  scripts/smoke-release-lifecycle.sh --binary PATH --version vMAJOR.MINOR.PATCH[-rc.N]
 
 环境变量：
   OKIT_HOME, OKIT_INSTALL_DIR  覆盖隔离测试目录
@@ -32,7 +32,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' || fail "版本号无效：$version"
+printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?$' || fail "版本号无效：$version"
 [ "$mode" != binary ] || [ -n "$binary" ] || fail "binary 模式需要 --binary PATH"
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

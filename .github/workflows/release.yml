@@ -6,11 +6,9 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
-  group: release-channel-pages
+  group: release-publish
   cancel-in-progress: false
 
 jobs:
@@ -30,9 +28,6 @@ jobs:
       github.event.action == 'published' &&
       github.event.release.prerelease
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -44,10 +39,11 @@ jobs:
           cache: true
       - name: 验证
         run: |
+          [[ "${{ github.event.release.tag_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]]
           test -z "$(gofmt -l .)"
           go test ./...
           go vet ./...
-      - name: 生成发布清单
+      - name: 生成预发布清单
         run: go run ./cmd/release-manifest --version "${{ github.event.release.tag_name }}" --output .release/release-manifest.json
       - name: 构建并上传预发布制品
         uses: goreleaser/goreleaser-action@v7
@@ -58,76 +54,133 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ github.event.release.tag_name }}
-      - name: 校验安装脚本制品
+      - name: 校验预发布制品
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ github.event.release.tag_name }}
         run: |
           assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
-          for required in install.ps1 install.sh; do
-            if ! grep -Fxq "$required" <<< "$assets"; then
-              echo "Release $VERSION 缺少安装脚本制品：$required" >&2
-              exit 1
-            fi
+          for required in install.ps1 install.sh release-manifest.json checksums.txt; do
+            grep -Fxq "$required" <<< "$assets" || { echo "Release $VERSION 缺少制品：$required" >&2; exit 1; }
           done
-      - name: 准备预发布通道
-        env:
-          CHANNEL_BASE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-          VERSION: ${{ github.event.release.tag_name }}
-        run: |
-          mkdir -p .pages/channels/prerelease
-          jq -e --arg version "$VERSION" '.version == $version and (.assets | length > 0)' .release/release-manifest.json >/dev/null
-          cp .release/release-manifest.json .pages/channels/prerelease/release-manifest.json
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: .pages
-      - name: 发布 GitHub Pages 预发布通道
-        id: deployment
-        uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern release-manifest.json --output .release/remote-manifest.json
+          jq -e --arg version "$VERSION" '.version == $version and (.assets | length > 0)' .release/remote-manifest.json >/dev/null
 
-  finalize-stable:
+  promote-stable:
     if: >-
       github.event.action == 'released' &&
       !github.event.release.prerelease
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: 校验正式 Release 安装脚本制品
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 升格正式版本
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ github.event.release.tag_name }}
+          RC_TAG: ${{ github.event.release.tag_name }}
         run: |
-          assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
-          for required in install.ps1 install.sh; do
-            if ! grep -Fxq "$required" <<< "$assets"; then
-              echo "正式 Release $VERSION 缺少安装脚本制品：$required" >&2
-              exit 1
-            fi
-          done
-      - name: 准备正式通道
-        env:
-          CHANNEL_BASE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-          VERSION: ${{ github.event.release.tag_name }}
-        run: |
-          mkdir -p .pages/channels/prerelease
-          status=$(curl -sS -o .pages/channels/prerelease/release-manifest.json -w '%{http_code}' "$CHANNEL_BASE/channels/prerelease/release-manifest.json")
-          if [ "$status" = 200 ]; then
-            test "$(jq -r .version .pages/channels/prerelease/release-manifest.json)" != "$VERSION" || rm .pages/channels/prerelease/release-manifest.json
-          else
-            test "$status" = 404
-            rm -f .pages/channels/prerelease/release-manifest.json
+          set -euo pipefail
+          [[ "$RC_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]] || {
+            echo "正式升格事件的 tag 不是 rc 版本：$RC_TAG" >&2
+            exit 1
+          }
+          VERSION="${RC_TAG%-rc.*}"
+          RC_COMMIT=$(git rev-list -n 1 "$RC_TAG")
+          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
+            echo "正式 tag 已存在：$VERSION" >&2
+            exit 1
           fi
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "正式 Release 已存在：$VERSION" >&2
+            exit 1
+          fi
+          latest_rc=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease --jq '.[].tagName' | grep -E "^${VERSION}-rc\\.[1-9][0-9]*$" | sort -V | tail -n 1 || true)
+          test "$latest_rc" = "$RC_TAG" || { echo "只能升格最新预发布版本：当前=$RC_TAG，最新=$latest_rc" >&2; exit 1; }
+          rollback() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --tag "$RC_TAG" --title "$RC_TAG" --prerelease=true >/dev/null 2>&1 || \
+                gh release edit "$RC_TAG" --repo "$GITHUB_REPOSITORY" --prerelease=true >/dev/null 2>&1 || true
+              git push origin ":refs/tags/$VERSION" >/dev/null 2>&1 || true
+              echo "正式升格失败，已尝试恢复预发布状态：$RC_TAG" >&2
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT
+          test "$RC_COMMIT" = "$(git rev-list -n 1 "$RC_TAG")"
+          test -z "$(gofmt -l .)"
+          go test ./...
+          go vet ./...
+          git tag "$VERSION" "$RC_COMMIT"
+          git push origin "refs/tags/$VERSION"
+          gh release edit "$RC_TAG" --repo "$GITHUB_REPOSITORY" --tag "$VERSION" --title "$VERSION"
+          go run ./cmd/release-manifest --version "$VERSION" --output .release/release-manifest.json
+          printf 'VERSION=%s\nRC_TAG=%s\n' "$VERSION" "$RC_TAG" >> "$GITHUB_ENV"
+
+      - name: 构建正式制品
+        uses: goreleaser/goreleaser-action@v7
         with:
-          path: .pages
-      - name: 发布 GitHub Pages 正式通道
-        id: deployment
-        uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --skip=publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ env.VERSION }}
+
+      - name: 上传并校验正式制品
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+          old_assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          mkdir -p .release/rollback
+          while IFS= read -r asset; do
+            [ -n "$asset" ] && gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir .release/rollback
+          done <<< "$old_assets"
+          while IFS= read -r asset; do
+            [ -n "$asset" ] && gh release delete-asset "$VERSION" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+          done <<< "$old_assets"
+          gh release upload "$VERSION" dist/*.tar.gz dist/*.zip dist/checksums.txt .release/release-manifest.json scripts/install.sh scripts/install.ps1 --repo "$GITHUB_REPOSITORY" --clobber
+          assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for required in install.ps1 install.sh release-manifest.json checksums.txt; do
+            grep -Fxq "$required" <<< "$assets" || { echo "正式 Release $VERSION 缺少制品：$required" >&2; exit 1; }
+          done
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern release-manifest.json --output .release/remote-manifest.json
+          jq -e --arg version "$VERSION" '.version == $version and (.assets | length > 0)' .release/remote-manifest.json >/dev/null
+
+      - name: 清理旧 rc
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ env.VERSION }}
+        run: |
+          set -uo pipefail
+          cleanup_failed=0
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' | grep -E "^${VERSION}-rc\\.[1-9][0-9]*$"); do
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes || cleanup_failed=1
+            git push origin ":refs/tags/$tag" || cleanup_failed=1
+          done
+          if [ "$cleanup_failed" -ne 0 ]; then
+            echo "正式版本已发布，但部分 rc 清理失败；请重新运行清理。" >&2
+          fi
+
+      - name: 升格失败时恢复预发布
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RC_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set +e
+          VERSION="${RC_TAG%-rc.*}"
+          gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --tag "$RC_TAG" --title "$RC_TAG" --prerelease=true
+          if [ -d .release/rollback ]; then
+            gh release upload "$RC_TAG" .release/rollback/* --repo "$GITHUB_REPOSITORY" --clobber
+          fi
+          git push origin ":refs/tags/$VERSION"
+          echo "正式升格失败，已尝试恢复预发布状态：$RC_TAG" >&2

@@ -14,7 +14,6 @@ func (a *App) newUpgradeCommand(global *globalOptions) *cobra.Command {
 	}}
 	command.Flags().BoolVar(&options.check, "check", false, "仅检查是否有可用更新")
 	command.Flags().StringVar(&options.version, "version", "", "安装指定版本")
-	command.Flags().BoolVar(&options.prerelease, "prerelease", false, "包含预发布版本")
 	command.Flags().BoolVar(&options.dryRun, "dry-run", false, "显示更新计划但不修改文件")
 	return command
 }

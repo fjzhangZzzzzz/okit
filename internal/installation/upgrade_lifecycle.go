@@ -80,9 +80,8 @@ const (
 
 // Intent is the complete user intent accepted by the lifecycle module.
 type Intent struct {
-	Mode              Mode
-	Version           string
-	IncludePrerelease bool
+	Mode    Mode
+	Version string
 }
 
 type Status uint8
@@ -189,9 +188,6 @@ func (u *Lifecycle) plan(ctx context.Context, intent Intent) (lifecyclePlan, err
 		return lifecyclePlan{}, errors.New("upgrade lifecycle dependencies are incomplete")
 	}
 	releases, err := u.Source.Releases(ctx)
-	if errors.Is(err, ErrNoPrerelease) {
-		return lifecyclePlan{result: Result{Status: StatusUpToDate, Current: current, Available: current, Plan: "no prerelease is available"}}, nil
-	}
 	if err != nil {
 		return lifecyclePlan{}, classifyFailure(err)
 	}

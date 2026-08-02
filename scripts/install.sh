@@ -13,7 +13,7 @@ status() {
 
 usage() {
   cat <<'EOF'
-Usage: install.sh [--version vMAJOR.MINOR.PATCH[-PRERELEASE]]
+Usage: install.sh [--version vMAJOR.MINOR.PATCH[-rc.N]]
 EOF
 }
 
@@ -36,7 +36,7 @@ case "$(uname -m)" in
   *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
-if [ -n "$requested_version" ] && ! printf '%s\n' "$requested_version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+if [ -n "$requested_version" ] && ! printf '%s\n' "$requested_version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?$'; then
   echo "invalid --version: $requested_version" >&2
   exit 1
 fi
@@ -81,7 +81,7 @@ json_string() {
 schema=$(sed -n 's/^[[:space:]]*"schema"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*,*[[:space:]]*$/\1/p' "$tmp/release-manifest.json" | head -n 1)
 [ "$schema" = 1 ] || { echo "unsupported release manifest schema: $schema" >&2; exit 1; }
 version=$(json_string version)
-if ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+if ! printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?$'; then
   echo "invalid version in release manifest: $version" >&2
   exit 1
 fi

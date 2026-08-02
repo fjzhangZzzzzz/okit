@@ -31,3 +31,16 @@ func TestParseManifestRejectsInvalidManifest(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateVersionAcceptsOnlyStableAndReleaseCandidates(t *testing.T) {
+	for _, version := range []string{"v2.0.0", "v2.0.0-rc.1", "v2.0.0-rc.12"} {
+		if err := ValidateVersion(version); err != nil {
+			t.Errorf("ValidateVersion(%q)=%v", version, err)
+		}
+	}
+	for _, version := range []string{"v2.0.0-beta.1", "v2.0.0-rc.0", "v2.0.0-rc.01", "v2.0.0+build"} {
+		if err := ValidateVersion(version); err == nil {
+			t.Errorf("ValidateVersion(%q) unexpectedly succeeded", version)
+		}
+	}
+}
