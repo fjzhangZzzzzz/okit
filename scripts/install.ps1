@@ -9,6 +9,10 @@ $installDir = if ($env:OKIT_INSTALL_DIR) { $env:OKIT_INSTALL_DIR } else { Join-P
 $requestedVersion = $Version
 $releaseRoot = if ($env:OKIT_RELEASE_BASE_URL) { $env:OKIT_RELEASE_BASE_URL.TrimEnd('/') } else { "https://github.com/$repo/releases" }
 
+function Write-Status([string]$Message) {
+    [Console]::Error.WriteLine("==> $Message")
+}
+
 function Assert-SafeFilename([string]$Name, [string]$Kind) {
     if (-not $Name -or $Name -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$' -or [IO.Path]::GetFileName($Name) -ne $Name) {
         throw "Invalid $Kind filename in release manifest: $Name"
@@ -20,6 +24,7 @@ if (-not [Environment]::Is64BitOperatingSystem) { throw 'okit requires a 64-bit 
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
 if ($requestedVersion -and $requestedVersion -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid -Version: $requestedVersion" }
 
+Write-Status $(if ($requestedVersion) { "正在获取 $requestedVersion 版本信息" } else { '正在获取最新版本信息' })
 $manifestURL = if ($requestedVersion) {
     "$releaseRoot/download/$requestedVersion/release-manifest.json"
 } else {
@@ -38,6 +43,7 @@ $asset = [string]$assetProperty.Value
 $checksumsName = [string]$manifest.checksums
 Assert-SafeFilename $asset 'asset'
 Assert-SafeFilename $checksumsName 'checksums'
+Write-Status "目标版本：$version（$(if ($channel -eq 'stable') { '稳定版' } else { '预发布版' })）"
 
 $base = "$releaseRoot/download/$version"
 $temp = Join-Path ([IO.Path]::GetTempPath()) ("okit-install-" + [guid]::NewGuid())
@@ -47,19 +53,24 @@ New-Item -ItemType Directory -Path $temp | Out-Null
 try {
     $archive = Join-Path $temp $asset
     $checksums = Join-Path $temp $checksumsName
+    Write-Status "正在下载 Windows $arch 制品"
     Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile $archive
+    Write-Status '正在下载校验文件'
     Invoke-WebRequest -UseBasicParsing -Uri "$base/$checksumsName" -OutFile $checksums
+    Write-Status '正在校验制品完整性'
     $line = Get-Content -LiteralPath $checksums | Where-Object { $_ -match "\s\*?$([regex]::Escape($asset))$" } | Select-Object -First 1
     if (-not $line) { throw "Checksum for $asset is missing" }
     $expected = ($line -split '\s+')[0]
     $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
     if ($actual -ne $expected) { throw "Checksum mismatch for $asset" }
 
+    Write-Status '正在解压安装包'
     Expand-Archive -LiteralPath $archive -DestinationPath $temp -Force
     $source = Join-Path $temp 'okit.exe'
     if (-not (Test-Path -LiteralPath $source)) { throw 'okit.exe is missing from release archive' }
     $updaterSource = Join-Path $temp 'okit-updater.exe'
     if (-not (Test-Path -LiteralPath $updaterSource)) { throw 'okit-updater.exe is missing from release archive' }
+    Write-Status '正在准备安装目录'
     New-Item -ItemType Directory -Force -Path $installDir, $okitHome | Out-Null
     $executable = Join-Path $installDir 'okit.exe'
     $updater = Join-Path $installDir 'okit-updater.exe'
@@ -69,6 +80,7 @@ try {
     $updaterBackup = "$updater.okit-old"
     Copy-Item -LiteralPath $source -Destination $binaryTemp
     Copy-Item -LiteralPath $updaterSource -Destination $updaterTemp
+    Write-Status '正在替换可执行文件'
     try {
         if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
         if (Test-Path -LiteralPath $updaterBackup) { Remove-Item -LiteralPath $updaterBackup -Force }
@@ -91,6 +103,7 @@ try {
     $entries = @($userPath -split ';' | Where-Object { $_ })
     $addedPath = $false
     if (-not ($entries | Where-Object { $_.TrimEnd('\') -ieq $installDir.TrimEnd('\') })) {
+        Write-Status '正在配置 PATH'
         [Environment]::SetEnvironmentVariable('Path', (($entries + $installDir) -join ';'), 'User')
         $addedPath = $true
     }
@@ -102,10 +115,12 @@ try {
     }
     if ($addedPath) { $metadata.path_entries = [string[]]@($installDir) }
     $metadataJSON = $metadata | ConvertTo-Json
+    Write-Status '正在写入安装元数据'
     $metadataTemp = Join-Path $okitHome ('.install-' + [guid]::NewGuid() + '.tmp')
     [IO.File]::WriteAllText($metadataTemp, $metadataJSON, [Text.UTF8Encoding]::new($false))
     Move-Item -LiteralPath $metadataTemp -Destination (Join-Path $okitHome 'install.json') -Force
     $metadataTemp = $null
+    Write-Status '安装完成'
     Write-Output "okit $version installed to $executable"
     if ($addedPath) { Write-Output 'Open a new terminal to use okit.' }
 }
