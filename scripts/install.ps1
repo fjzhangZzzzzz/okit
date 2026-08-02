@@ -57,22 +57,34 @@ try {
     Expand-Archive -LiteralPath $archive -DestinationPath $temp -Force
     $source = Join-Path $temp 'okit.exe'
     if (-not (Test-Path -LiteralPath $source)) { throw 'okit.exe is missing from release archive' }
+    $updaterSource = Join-Path $temp 'okit-updater.exe'
+    if (-not (Test-Path -LiteralPath $updaterSource)) { throw 'okit-updater.exe is missing from release archive' }
     New-Item -ItemType Directory -Force -Path $installDir, $okitHome | Out-Null
     $executable = Join-Path $installDir 'okit.exe'
+    $updater = Join-Path $installDir 'okit-updater.exe'
     $binaryTemp = Join-Path $installDir ('.okit-install-' + [guid]::NewGuid() + '.exe')
+    $updaterTemp = Join-Path $installDir ('.okit-updater-install-' + [guid]::NewGuid() + '.exe')
     $backup = "$executable.okit-old"
+    $updaterBackup = "$updater.okit-old"
     Copy-Item -LiteralPath $source -Destination $binaryTemp
+    Copy-Item -LiteralPath $updaterSource -Destination $updaterTemp
     try {
         if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
+        if (Test-Path -LiteralPath $updaterBackup) { Remove-Item -LiteralPath $updaterBackup -Force }
         if (Test-Path -LiteralPath $executable) { Move-Item -LiteralPath $executable -Destination $backup }
+        if (Test-Path -LiteralPath $updater) { Move-Item -LiteralPath $updater -Destination $updaterBackup }
         Move-Item -LiteralPath $binaryTemp -Destination $executable
+        Move-Item -LiteralPath $updaterTemp -Destination $updater
         $binaryTemp = $null
+        $updaterTemp = $null
     }
     catch {
-        if ((Test-Path -LiteralPath $backup) -and -not (Test-Path -LiteralPath $executable)) { Move-Item -LiteralPath $backup -Destination $executable }
+        if ((Test-Path -LiteralPath $backup)) { if (Test-Path -LiteralPath $executable) { Remove-Item -LiteralPath $executable -Force }; Move-Item -LiteralPath $backup -Destination $executable }
+        if ((Test-Path -LiteralPath $updaterBackup)) { if (Test-Path -LiteralPath $updater) { Remove-Item -LiteralPath $updater -Force }; Move-Item -LiteralPath $updaterBackup -Destination $updater }
         throw
     }
     if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $updaterBackup) { Remove-Item -LiteralPath $updaterBackup -Force -ErrorAction SilentlyContinue }
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $entries = @($userPath -split ';' | Where-Object { $_ })
@@ -85,7 +97,7 @@ try {
         method = 'official'; version = $version; channel = $channel
         executable = $executable
         path_entries = @()
-        managed_files = @()
+        managed_files = @($updater)
     }
     if ($addedPath) { $metadata.path_entries = [string[]]@($installDir) }
     $metadataJSON = $metadata | ConvertTo-Json
@@ -98,6 +110,7 @@ try {
 }
 finally {
     if ($binaryTemp) { Remove-Item -LiteralPath $binaryTemp -Force -ErrorAction SilentlyContinue }
+    if ($updaterTemp) { Remove-Item -LiteralPath $updaterTemp -Force -ErrorAction SilentlyContinue }
     if ($metadataTemp) { Remove-Item -LiteralPath $metadataTemp -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }

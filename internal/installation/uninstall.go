@@ -53,6 +53,9 @@ func (u *Uninstaller) Uninstall(options UninstallOptions) (UninstallResult, erro
 		return result, err
 	}
 	for _, file := range metadata.ManagedFiles {
+		if metadata.Executable != "" && filepath.Clean(file) == filepath.Clean(filepath.Join(filepath.Dir(metadata.Executable), "okit-updater.exe")) {
+			continue // the native updater removes itself after the process exits
+		}
 		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
 			return result, err
 		}

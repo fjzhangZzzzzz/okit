@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/fjzhangZzzzzz/okit/internal/config"
 	"github.com/fjzhangZzzzzz/okit/internal/installation"
 	clioutput "github.com/fjzhangZzzzzz/okit/internal/output"
 	"github.com/spf13/cobra"
@@ -120,6 +122,17 @@ func exitCode(code int) error {
 }
 
 func (a *App) Run(args []string, stdout, stderr io.Writer) int {
+	if a.buildMode == BuildModeRelease {
+		if home, err := config.Home(); err == nil {
+			if result, resultErr := installation.ReadTransactionResult(home); resultErr == nil && result.Code != "" {
+				_ = os.Remove(filepath.Join(home, "transactions", "result.json"))
+				return a.reportStartupFailure(stdout, stderr, fmt.Errorf("%s: %s", result.Code, result.Message))
+			}
+			if _, recoveryErr := installation.RecoverTransaction(home); recoveryErr != nil {
+				return a.reportStartupFailure(stdout, stderr, recoveryErr)
+			}
+		}
+	}
 	options := &globalOptions{format: "table"}
 	root := a.newRootCommandWithOptions(options)
 	root.SetArgs(args)
@@ -154,6 +167,11 @@ func (a *App) Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return 0
+}
+
+func (a *App) reportStartupFailure(stdout, stderr io.Writer, err error) int {
+	_, _ = io.WriteString(stderr, fmt.Sprintf("SELF_UPDATE_RECOVERY_REQUIRED: %v\n", err))
+	return 1
 }
 
 func cobraUsageDiagnostic(err error, commandPath string) clioutput.Diagnostic {

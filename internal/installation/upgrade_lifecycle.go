@@ -67,6 +67,7 @@ type progressDownloader interface {
 	DownloadWithProgress(context.Context, string, func(current, total int64)) ([]byte, error)
 }
 type ReplaceFunc func(executable, staged string) (scheduled bool, err error)
+type TransactionReplaceFunc func(UpdateTransaction) (scheduled bool, err error)
 
 // Mode describes the requested upgrade lifecycle without exposing execution details.
 type Mode uint8
@@ -120,13 +121,14 @@ func (f *Failure) Unwrap() error { return f.Cause }
 // Dependencies are chosen at the CLI composition seam. Each port has production and
 // test adapters; the lifecycle owns every remaining execution detail.
 type Dependencies struct {
-	CurrentVersion string
-	Executable     string
-	OKITHome       string
-	Source         ReleaseSource
-	Downloader     Downloader
-	Replace        ReplaceFunc
-	Metadata       *Metadata
+	CurrentVersion     string
+	Executable         string
+	OKITHome           string
+	Source             ReleaseSource
+	Downloader         Downloader
+	Replace            ReplaceFunc
+	ReplaceTransaction TransactionReplaceFunc
+	Metadata           *Metadata
 }
 
 // Lifecycle is the deep module behind the upgrade seam.
@@ -211,12 +213,56 @@ func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressRep
 	if err != nil {
 		return Result{}, err
 	}
+	metadata = managed.WithRelease(release.Version, releaseChannel(release)).Metadata
+	if metadata.Executable == "" {
+		metadata.Executable = u.Executable
+	}
+	if u.ReplaceTransaction != nil {
+		updaterPath := filepath.Join(filepath.Dir(u.Executable), "okit-updater.exe")
+		found := false
+		for _, file := range metadata.ManagedFiles {
+			if filepath.Clean(file) == filepath.Clean(updaterPath) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			metadata.ManagedFiles = append(metadata.ManagedFiles, updaterPath)
+		}
+	}
 	reportProgress(progress, Progress{Stage: ProgressReplace, Version: release.Version})
-	scheduled, err := u.Replace(u.Executable, staged)
+	var scheduled bool
+	if u.ReplaceTransaction != nil {
+		stagedUpdater := filepath.Join(filepath.Dir(staged), "okit-updater.exe")
+		currentUpdater := filepath.Join(filepath.Dir(u.Executable), "okit-updater.exe")
+		if _, statErr := os.Stat(currentUpdater); statErr != nil {
+			return Result{}, fmt.Errorf("SELF_UPDATE_MIGRATION_REQUIRED: install the current release once with install.ps1 before upgrading")
+		}
+		tx := UpdateTransaction{Schema: 1, State: TransactionPrepared, OKITHome: u.OKITHome,
+			TransactionDir: filepath.Dir(staged), Current: u.Executable,
+			CurrentUpdater: currentUpdater,
+			Staged:         staged, StagedUpdater: stagedUpdater,
+			Backup:        filepath.Join(filepath.Dir(staged), "okit.exe.old"),
+			UpdaterBackup: filepath.Join(filepath.Dir(staged), "okit-updater.exe.old"),
+			OldMetadata:   metadata, NewMetadata: metadata, WaitPID: os.Getpid()}
+		if old, e := LoadMetadata(u.OKITHome); e == nil {
+			tx.OldMetadata = old
+		}
+		tx.StagedSHA256, err = fileSHA256(staged)
+		if err != nil {
+			return Result{}, err
+		}
+		tx.UpdaterSHA256, err = fileSHA256(stagedUpdater)
+		if err != nil {
+			return Result{}, err
+		}
+		scheduled, err = u.ReplaceTransaction(tx)
+	} else {
+		scheduled, err = u.Replace(u.Executable, staged)
+	}
 	if err != nil {
 		return Result{}, err
 	}
-	metadata = managed.WithRelease(release.Version, releaseChannel(release)).Metadata
 	removeStaging = !scheduled
 	if !scheduled {
 		if err := SaveMetadata(u.OKITHome, metadata); err != nil {
@@ -299,19 +345,25 @@ func extractExecutable(name string, data []byte, directory string) (string, erro
 		if err != nil {
 			return "", err
 		}
+		found := false
 		for _, file := range reader.File {
-			if filepath.Base(file.Name) != executableName {
+			base := filepath.Base(file.Name)
+			if base != executableName && base != "okit-updater.exe" {
 				continue
 			}
+			found = found || base == executableName
+			targetPath := filepath.Join(directory, base)
 			stream, err := file.Open()
 			if err != nil {
 				return "", err
 			}
-			err = writeLimitedExecutable(target, stream)
+			err = writeLimitedExecutable(targetPath, stream)
 			stream.Close()
 			if err != nil {
 				return "", err
 			}
+		}
+		if found {
 			return target, nil
 		}
 		return "", errors.New("okit executable is missing from archive")

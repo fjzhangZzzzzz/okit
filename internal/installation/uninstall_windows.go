@@ -7,21 +7,26 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 )
+
+type UninstallJob struct {
+	Executable, Updater, Home string
+	Purge                     bool
+	WaitPID                   int
+}
 
 func removePathEntries(entries []string) error {
 	if len(entries) == 0 {
 		return nil
 	}
-	output, err := exec.Command("reg", "query", `HKCU\Environment`, "/v", "Path").CombinedOutput()
+	out, err := exec.Command("reg", "query", `HKCU\Environment`, "/v", "Path").CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("read user PATH: %w: %s", err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("read user PATH: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	line := ""
-	for _, candidate := range strings.Split(string(output), "\n") {
+	for _, candidate := range strings.Split(string(out), "\n") {
 		if strings.Contains(candidate, "REG_") {
 			line = candidate
 		}
@@ -43,36 +48,58 @@ func removePathEntries(entries []string) error {
 			kept = append(kept, part)
 		}
 	}
-	command := exec.Command("reg", "add", `HKCU\Environment`, "/v", "Path", "/t", "REG_EXPAND_SZ", "/d", strings.Join(kept, ";"), "/f")
-	if output, err := command.CombinedOutput(); err != nil {
-		return fmt.Errorf("update user PATH: %w: %s", err, strings.TrimSpace(string(output)))
+	cmd := exec.Command("reg", "add", `HKCU\Environment`, "/v", "Path", "/t", "REG_EXPAND_SZ", "/d", strings.Join(kept, ";"), "/f")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("update user PATH: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
 func scheduleUninstall(executable, home string, purge bool) (bool, error) {
-	dir, err := os.MkdirTemp("", "okit-uninstall-*")
+	updater := filepath.Join(filepath.Dir(executable), "okit-updater.exe")
+	if _, err := os.Stat(updater); err != nil {
+		return false, fmt.Errorf("okit-updater.exe is required for Windows uninstall: %w", err)
+	}
+	dir, err := os.MkdirTemp(home, ".uninstall-*")
 	if err != nil {
 		return false, err
 	}
-	script := filepath.Join(dir, "uninstall.ps1")
-	if err := os.WriteFile(script, []byte(uninstallScriptContent), 0o600); err != nil {
+	copy := filepath.Join(dir, "okit-updater.exe")
+	if err := copyFile(updater, copy); err != nil {
 		return false, err
 	}
-	command := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", script, strconv.Itoa(os.Getpid()), executable, home, strconv.FormatBool(purge))
-	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	job := filepath.Join(dir, "uninstall.json")
+	data := []byte(fmt.Sprintf(`{"executable":%q,"updater":%q,"home":%q,"purge":%t,"wait_pid":%d}`, executable, updater, home, purge, os.Getpid()))
+	if err := os.WriteFile(job, data, 0o600); err != nil {
+		return false, err
+	}
+	command := exec.Command(copy, "--uninstall", job)
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	if err := command.Start(); err != nil {
 		return false, err
 	}
-	if err := command.Process.Release(); err != nil {
-		return false, err
-	}
+	_ = command.Process.Release()
 	return true, nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err = out.ReadFrom(in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 const uninstallScriptContent = `param([int]$PidToWait,[string]$Executable,[string]$OKITHome,[string]$Purge)
 Wait-Process -Id $PidToWait -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $Executable -Force -ErrorAction SilentlyContinue
-if ($Purge -eq 'true') { Remove-Item -LiteralPath $OKITHome -Recurse -Force -ErrorAction SilentlyContinue } else { Remove-Item -LiteralPath (Join-Path $OKITHome 'install.json') -Force -ErrorAction SilentlyContinue }
-Remove-Item -LiteralPath (Split-Path -Parent $PSCommandPath) -Recurse -Force -ErrorAction SilentlyContinue
-`
+if ($Purge -eq 'true') { Remove-Item -LiteralPath $OKITHome -Recurse -Force -ErrorAction SilentlyContinue } else { Remove-Item -LiteralPath (Join-Path $OKITHome 'install.json') -Force -ErrorAction SilentlyContinue }`

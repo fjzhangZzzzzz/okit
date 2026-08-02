@@ -4,29 +4,31 @@ package installation
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
-	"strconv"
 	"syscall"
 )
 
 func PlatformReplace(executable, staged string) (bool, error) {
-	script := filepath.Join(filepath.Dir(staged), "replace.ps1")
-	if err := os.WriteFile(script, []byte(replacementScriptContent), 0o600); err != nil {
+	return false, fmt.Errorf("native transaction metadata is required for Windows replacement")
+}
+
+func PlatformReplaceTransaction(t UpdateTransaction) (bool, error) {
+	if err := SaveTransaction(t); err != nil {
 		return false, err
 	}
-	command := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", script, strconv.Itoa(os.Getpid()), executable, staged)
-	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	command := exec.Command(t.StagedUpdater, "--transaction", TransactionPath(t.OKITHome))
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	if err := command.Start(); err != nil {
-		return false, fmt.Errorf("start replacement helper: %w", err)
+		return false, fmt.Errorf("start native updater: %w", err)
 	}
-	if err := command.Process.Release(); err != nil {
-		return false, err
-	}
+	_ = command.Process.Release()
 	return true, nil
 }
 
+func NativeTransactionReplace() TransactionReplaceFunc { return PlatformReplaceTransaction }
+
+// Kept for compatibility with the legacy helper test; production upgrades use
+// PlatformReplaceTransaction and never launch this script.
 const replacementScriptContent = `param([int]$PidToWait,[string]$Current,[string]$Staged)
 Wait-Process -Id $PidToWait -ErrorAction SilentlyContinue
 $backup = "$Current.okit-old"
@@ -38,7 +40,4 @@ try {
 } catch {
   if ((Test-Path -LiteralPath $backup) -and -not (Test-Path -LiteralPath $Current)) { Move-Item -LiteralPath $backup -Destination $Current -Force }
   exit 1
-}
-$helperDir = Split-Path -Parent $PSCommandPath
-Remove-Item -LiteralPath $helperDir -Recurse -Force -ErrorAction SilentlyContinue
-`
+}`
