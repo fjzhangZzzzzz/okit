@@ -65,7 +65,7 @@ func TestManifestSourceUsesAndValidatesExplicitVersion(t *testing.T) {
 	}
 }
 
-func TestManifestSourceResolvesPrereleasePointerWithoutAPI(t *testing.T) {
+func TestManifestSourceResolvesPrereleaseChannelWithoutAPI(t *testing.T) {
 	manifest, _ := release.NewManifest("v2.0.1")
 	data, _ := release.MarshalManifest(manifest)
 	var requested string
@@ -75,8 +75,8 @@ func TestManifestSourceResolvesPrereleasePointerWithoutAPI(t *testing.T) {
 	}))
 	defer server.Close()
 
-	releases, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases"}).Releases(context.Background())
-	if err != nil || requested != "/releases/download/pre-release/release-manifest.json" || !releases[0].Prerelease {
+	releases, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases", ChannelBase: server.URL}).Releases(context.Background())
+	if err != nil || requested != "/channels/prerelease/release-manifest.json" || !releases[0].Prerelease {
 		t.Fatalf("releases=%+v requested=%q err=%v", releases, requested, err)
 	}
 }
@@ -84,7 +84,7 @@ func TestManifestSourceResolvesPrereleasePointerWithoutAPI(t *testing.T) {
 func TestManifestSourceTreatsMissingPrereleasePointerAsNoUpdate(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
-	_, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases"}).Releases(context.Background())
+	_, err := (ManifestSource{GOOS: "linux", GOARCH: "amd64", Prerelease: true, Client: server.Client(), ReleaseBase: server.URL + "/releases", ChannelBase: server.URL}).Releases(context.Background())
 	if !errors.Is(err, ErrNoPrerelease) {
 		t.Fatalf("err=%v", err)
 	}

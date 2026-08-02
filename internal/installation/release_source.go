@@ -12,6 +12,7 @@ import (
 
 const (
 	defaultReleaseBaseURL = "https://github.com/fjzhangZzzzzz/okit/releases"
+	defaultChannelBaseURL = "https://fjzhangzzzzz.github.io/okit"
 )
 
 type ManifestSource struct {
@@ -20,6 +21,7 @@ type ManifestSource struct {
 	Prerelease   bool
 	Client       *http.Client
 	ReleaseBase  string
+	ChannelBase  string
 }
 
 func (s ManifestSource) Releases(ctx context.Context) ([]Release, error) {
@@ -79,7 +81,11 @@ func (s ManifestSource) manifestURL(base string) string {
 		return base + "/download/" + s.Version + "/release-manifest.json"
 	}
 	if s.Prerelease {
-		return base + "/download/pre-release/release-manifest.json"
+		channelBase := strings.TrimRight(s.ChannelBase, "/")
+		if channelBase == "" {
+			channelBase = defaultChannelBaseURL
+		}
+		return channelBase + "/channels/prerelease/release-manifest.json"
 	}
 	return base + "/latest/download/release-manifest.json"
 }
