@@ -4,6 +4,6 @@ package installation
 
 import "os"
 
-func PlatformReplace(executable, staged string) (bool, error) {
+func PlatformReplace(executable, staged, _ string, _ Metadata) (bool, error) {
 	return false, CompleteReplacement(executable, staged, os.Rename)
 }

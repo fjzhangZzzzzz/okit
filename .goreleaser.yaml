@@ -11,10 +11,18 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w -X main.version={{.Tag}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.buildMode=release
+  - id: okit-updater
+    main: ./cmd/okit-updater
+    binary: okit-updater
+    env: [CGO_ENABLED=0]
+    goos: [windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
 
 archives:
   - id: release
-    ids: [okit]
+    ids: [okit, okit-updater]
     formats: [tar.gz]
     format_overrides:
       - goos: windows

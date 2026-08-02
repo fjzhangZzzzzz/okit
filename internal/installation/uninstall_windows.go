@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 )
@@ -30,8 +29,7 @@ func removePathEntries(entries []string) error {
 	if len(fields) < 3 {
 		return fmt.Errorf("could not parse user PATH")
 	}
-	parts := strings.Split(strings.Join(fields[2:], " "), ";")
-	kept := make([]string, 0, len(parts))
+	parts, kept := strings.Split(strings.Join(fields[2:], " "), ";"), []string{}
 	for _, part := range parts {
 		remove := false
 		for _, entry := range entries {
@@ -51,16 +49,23 @@ func removePathEntries(entries []string) error {
 }
 
 func scheduleUninstall(executable, home string, purge bool) (bool, error) {
-	dir, err := os.MkdirTemp("", "okit-uninstall-*")
+	dir, err := os.MkdirTemp(home, ".uninstall-*")
 	if err != nil {
 		return false, err
 	}
-	script := filepath.Join(dir, "uninstall.ps1")
-	if err := os.WriteFile(script, []byte(uninstallScriptContent), 0o600); err != nil {
+	installedUpdater := filepath.Join(filepath.Dir(executable), "okit-updater.exe")
+	helper := filepath.Join(dir, "okit-updater.exe")
+	if data, err := os.ReadFile(installedUpdater); err != nil {
+		return false, fmt.Errorf("read installed updater: %w", err)
+	} else if err := os.WriteFile(helper, data, 0o700); err != nil {
 		return false, err
 	}
-	command := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", script, strconv.Itoa(os.Getpid()), executable, home, strconv.FormatBool(purge))
-	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	jobPath := filepath.Join(dir, "uninstall-job.json")
+	if err := SaveUninstallJob(jobPath, UninstallJob{WaitPID: os.Getpid(), Executable: executable, InstalledUpdater: installedUpdater, OKITHome: home, Purge: purge}); err != nil {
+		return false, err
+	}
+	command := exec.Command(helper, "--uninstall-job", jobPath)
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
 	if err := command.Start(); err != nil {
 		return false, err
 	}
@@ -69,10 +74,3 @@ func scheduleUninstall(executable, home string, purge bool) (bool, error) {
 	}
 	return true, nil
 }
-
-const uninstallScriptContent = `param([int]$PidToWait,[string]$Executable,[string]$OKITHome,[string]$Purge)
-Wait-Process -Id $PidToWait -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $Executable -Force -ErrorAction SilentlyContinue
-if ($Purge -eq 'true') { Remove-Item -LiteralPath $OKITHome -Recurse -Force -ErrorAction SilentlyContinue } else { Remove-Item -LiteralPath (Join-Path $OKITHome 'install.json') -Force -ErrorAction SilentlyContinue }
-Remove-Item -LiteralPath (Split-Path -Parent $PSCommandPath) -Recurse -Force -ErrorAction SilentlyContinue
-`

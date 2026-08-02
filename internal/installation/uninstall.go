@@ -52,7 +52,11 @@ func (u *Uninstaller) Uninstall(options UninstallOptions) (UninstallResult, erro
 	if err := removePathEntries(metadata.PathEntries); err != nil {
 		return result, err
 	}
+	deferredUpdater := filepath.Join(filepath.Dir(metadata.Executable), "okit-updater.exe")
 	for _, file := range metadata.ManagedFiles {
+		if u.Executable != "" && filepath.Clean(file) == filepath.Clean(deferredUpdater) && filepath.Clean(metadata.Executable) == filepath.Clean(u.Executable) {
+			continue
+		}
 		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
 			return result, err
 		}

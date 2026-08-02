@@ -156,7 +156,7 @@ func TestLifecycleDownloadsManifestAssetAndChecksums(t *testing.T) {
 			GOOS: "windows", GOARCH: "amd64", Client: server.Client(), ReleaseBase: server.URL + "/releases",
 		},
 		Downloader: HTTPDownloader{Client: server.Client()},
-		Replace: func(_, staged string) (bool, error) {
+		Replace: func(_, staged string, _ string, _ Metadata) (bool, error) {
 			data, err := os.ReadFile(staged)
 			if err != nil {
 				return false, err

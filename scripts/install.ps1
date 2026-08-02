@@ -56,12 +56,15 @@ try {
 
     Expand-Archive -LiteralPath $archive -DestinationPath $temp -Force
     $source = Join-Path $temp 'okit.exe'
+    $updaterSource = Join-Path $temp 'okit-updater.exe'
     if (-not (Test-Path -LiteralPath $source)) { throw 'okit.exe is missing from release archive' }
+    if (-not (Test-Path -LiteralPath $updaterSource)) { throw 'okit-updater.exe is missing from release archive' }
     New-Item -ItemType Directory -Force -Path $installDir, $okitHome | Out-Null
     $executable = Join-Path $installDir 'okit.exe'
     $binaryTemp = Join-Path $installDir ('.okit-install-' + [guid]::NewGuid() + '.exe')
     $backup = "$executable.okit-old"
     Copy-Item -LiteralPath $source -Destination $binaryTemp
+    Copy-Item -LiteralPath $updaterSource -Destination (Join-Path $installDir 'okit-updater.exe') -Force
     try {
         if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
         if (Test-Path -LiteralPath $executable) { Move-Item -LiteralPath $executable -Destination $backup }
@@ -85,7 +88,7 @@ try {
         method = 'official'; version = $version; channel = $channel
         executable = $executable
         path_entries = @()
-        managed_files = @()
+        managed_files = @((Join-Path $installDir 'okit-updater.exe'))
     }
     if ($addedPath) { $metadata.path_entries = [string[]]@($installDir) }
     $metadataJSON = $metadata | ConvertTo-Json
