@@ -43,7 +43,7 @@ func TestScheduledWindowsHelperKeepsStagedFiles_SELF006(t *testing.T) {
 		Downloader: fakeDownload{data: map[string][]byte{
 			"asset": archive.Bytes(), "sum": []byte(fmt.Sprintf("%x  okit.zip\n", digest)),
 		}},
-		Replace: func(_ string, candidate string, _ string, _ Metadata) (bool, error) {
+		Replace: func(_ string, candidate string) (bool, error) {
 			staged = candidate
 			return true, nil
 		},
@@ -118,7 +118,7 @@ func TestChecksumOrDownloadFailureDoesNotReplace_SELF003(t *testing.T) {
 	lifecycle := NewLifecycle(Dependencies{CurrentVersion: "v1.0.0", Executable: executable, OKITHome: filepath.Join(dir, "home"), Source: source,
 		Metadata:   &Metadata{Method: "official", Executable: executable},
 		Downloader: fakeDownload{data: map[string][]byte{"asset": []byte("broken"), "sum": []byte("deadbeef  okit.zip\n")}},
-		Replace:    func(string, string, string, Metadata) (bool, error) { replaced = true; return false, nil },
+		Replace:    func(string, string) (bool, error) { replaced = true; return false, nil },
 	})
 	if _, err := lifecycle.Run(context.Background(), Intent{}, nil); err == nil {
 		t.Fatal("checksum failure accepted")
@@ -282,7 +282,7 @@ func TestLifecycleCheckHasNoSideEffects(t *testing.T) {
 		Metadata:       &Metadata{Method: "official"},
 		Source:         &fakeSource{releases: []Release{{Version: "v1.1.0"}}},
 		Downloader:     fakeDownload{},
-		Replace: func(string, string, string, Metadata) (bool, error) {
+		Replace: func(string, string) (bool, error) {
 			t.Fatal("check must not replace the executable")
 			return false, nil
 		},
@@ -357,7 +357,7 @@ func TestLifecycleReportsProgressStages(t *testing.T) {
 		Downloader: fakeDownload{data: map[string][]byte{
 			"asset": archive.Bytes(), "sum": []byte(fmt.Sprintf("%x  okit.zip\n", digest)),
 		}},
-		Replace: func(_, _ string, _ string, _ Metadata) (bool, error) { return false, nil },
+		Replace: func(_, _ string) (bool, error) { return false, nil },
 	})
 	_, err = lifecycle.Run(context.Background(), Intent{IncludePrerelease: true}, ProgressFunc(func(progress Progress) {
 		stages = append(stages, progress.Stage)

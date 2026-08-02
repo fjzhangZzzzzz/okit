@@ -66,7 +66,7 @@ func (f ProgressFunc) ReportProgress(progress Progress) { f(progress) }
 type progressDownloader interface {
 	DownloadWithProgress(context.Context, string, func(current, total int64)) ([]byte, error)
 }
-type ReplaceFunc func(executable, staged, okitHome string, metadata Metadata) (scheduled bool, err error)
+type ReplaceFunc func(executable, staged string) (scheduled bool, err error)
 
 // Mode describes the requested upgrade lifecycle without exposing execution details.
 type Mode uint8
@@ -212,12 +212,11 @@ func (u *Lifecycle) Run(ctx context.Context, intent Intent, progress ProgressRep
 		return Result{}, err
 	}
 	reportProgress(progress, Progress{Stage: ProgressReplace, Version: release.Version})
-	nextMetadata := managed.WithRelease(release.Version, releaseChannel(release)).Metadata
-	scheduled, err := u.Replace(u.Executable, staged, u.OKITHome, nextMetadata)
+	scheduled, err := u.Replace(u.Executable, staged)
 	if err != nil {
 		return Result{}, err
 	}
-	metadata = nextMetadata
+	metadata = managed.WithRelease(release.Version, releaseChannel(release)).Metadata
 	removeStaging = !scheduled
 	if !scheduled {
 		if err := SaveMetadata(u.OKITHome, metadata); err != nil {
@@ -301,21 +300,20 @@ func extractExecutable(name string, data []byte, directory string) (string, erro
 			return "", err
 		}
 		for _, file := range reader.File {
-			base := filepath.Base(file.Name)
-			if base != executableName && base != "okit-updater.exe" { continue }
+			if filepath.Base(file.Name) != executableName {
+				continue
+			}
 			stream, err := file.Open()
 			if err != nil {
 				return "", err
 			}
-			output := filepath.Join(directory, base)
-			err = writeLimitedExecutable(output, stream)
+			err = writeLimitedExecutable(target, stream)
 			stream.Close()
 			if err != nil {
 				return "", err
 			}
-			if base == executableName { target = output }
+			return target, nil
 		}
-		if _, err := os.Stat(target); err == nil { return target, nil }
 		return "", errors.New("okit executable is missing from archive")
 	}
 	gzipReader, err := gzip.NewReader(bytes.NewReader(data))
