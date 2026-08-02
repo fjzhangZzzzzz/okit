@@ -100,7 +100,7 @@ jobs:
             echo "正式 Release 已存在：$VERSION" >&2
             exit 1
           fi
-          latest_rc=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease --jq '.[].tagName' | grep -E "^${VERSION}-rc\\.[1-9][0-9]*$" | sort -V | tail -n 1 || true)
+          latest_rc=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name' | grep -E "^${VERSION}-rc\\.[1-9][0-9]*$" | sort -V | tail -n 1 || true)
           test "$latest_rc" = "$RC_TAG" || { echo "只能升格最新预发布版本：当前=$RC_TAG，最新=$latest_rc" >&2; exit 1; }
           rollback() {
             status=$?
@@ -162,7 +162,7 @@ jobs:
         run: |
           set -uo pipefail
           cleanup_failed=0
-          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' | grep -E "^${VERSION}-rc\\.[1-9][0-9]*$"); do
+          for tag in $(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name' | grep -E "^${VERSION}-rc\\.[1-9][0-9]*$"); do
             gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes || cleanup_failed=1
             git push origin ":refs/tags/$tag" || cleanup_failed=1
           done
@@ -180,6 +180,10 @@ jobs:
           VERSION="${RC_TAG%-rc.*}"
           gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --tag "$RC_TAG" --title "$RC_TAG" --prerelease=true
           if [ -d .release/rollback ]; then
+            current_assets=$(gh release view "$RC_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+            while IFS= read -r asset; do
+              [ -n "$asset" ] && gh release delete-asset "$RC_TAG" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+            done <<< "$current_assets"
             gh release upload "$RC_TAG" .release/rollback/* --repo "$GITHUB_REPOSITORY" --clobber
           fi
           git push origin ":refs/tags/$VERSION"

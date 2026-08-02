@@ -53,3 +53,5 @@ okit upgrade --version v1.2.3-rc.1
 从已安装的 rc 升级到对应正式版是正常升级路径。指定版本仍可用于安装已存在的版本或回退到旧正式版。
 
 项目不再使用 GitHub Pages 发布通道、预发布 manifest 或额外 host；客户端只通过 GitHub Releases 的普通 HTTPS 下载 manifest 和制品，不调用 GitHub REST Releases API。
+
+升级发布流程后，先手动运行一次 `.github/workflows/cleanup-pages.yml` 清空历史 Pages 内容，确认部署完成后删除该一次性工作流文件并提交。之后不再启用 GitHub Pages。
