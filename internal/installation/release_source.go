@@ -12,7 +12,7 @@ import (
 
 const (
 	defaultReleaseBaseURL = "https://github.com/fjzhangZzzzzz/okit/releases"
-	defaultChannelBaseURL = "https://fjzhangzzzzz.github.io/okit"
+	defaultChannelBaseURL = "https://fjzhangzzzzzz.github.io/okit"
 )
 
 type ManifestSource struct {

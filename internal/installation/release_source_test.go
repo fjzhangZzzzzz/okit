@@ -81,6 +81,14 @@ func TestManifestSourceResolvesPrereleaseChannelWithoutAPI(t *testing.T) {
 	}
 }
 
+func TestManifestSourceUsesPublishedPrereleaseChannelByDefault(t *testing.T) {
+	source := ManifestSource{Prerelease: true}
+	want := "https://fjzhangzzzzzz.github.io/okit/channels/prerelease/release-manifest.json"
+	if got := source.manifestURL("https://github.com/fjzhangZzzzzz/okit/releases"); got != want {
+		t.Fatalf("manifest URL=%q, want %q", got, want)
+	}
+}
+
 func TestManifestSourceTreatsMissingPrereleasePointerAsNoUpdate(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
