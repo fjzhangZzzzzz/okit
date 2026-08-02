@@ -7,7 +7,7 @@ import (
 
 func TestWorkflowSeparatesRuntimeAndReleaseLifecycleSmokeTests(t *testing.T) {
 	workflow := repositoryFile(t, ".github", "workflows", "release.yml")
-	for _, required := range []string{"release:", "published, released", "cmd/release-manifest", "actions/upload-pages-artifact@v4", "actions/deploy-pages@v4", "channels/prerelease"} {
+	for _, required := range []string{"release:", "published, released", "cmd/release-manifest", "actions/upload-pages-artifact@v4", "actions/deploy-pages@v4", "channels/prerelease", "install.ps1", "install.sh", "gh release view", "直接发布正式版本"} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("发布工作流不包含 %q", required)
 		}

@@ -14,6 +14,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  reject-direct-stable:
+    if: >-
+      github.event.action == 'published' &&
+      !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拒绝直接发布正式版本
+        run: |
+          echo "直接发布正式版本被拒绝：请先创建预发布版本，完成验证后再升格正式版本。" >&2
+          exit 1
+
   publish-prerelease:
     if: >-
       github.event.action == 'published' &&
@@ -47,6 +58,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ github.event.release.tag_name }}
+      - name: 校验安装脚本制品
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for required in install.ps1 install.sh; do
+            if ! grep -Fxq "$required" <<< "$assets"; then
+              echo "Release $VERSION 缺少安装脚本制品：$required" >&2
+              exit 1
+            fi
+          done
       - name: 准备预发布通道
         env:
           CHANNEL_BASE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
@@ -74,6 +97,18 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: 校验正式 Release 安装脚本制品
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for required in install.ps1 install.sh; do
+            if ! grep -Fxq "$required" <<< "$assets"; then
+              echo "正式 Release $VERSION 缺少安装脚本制品：$required" >&2
+              exit 1
+            fi
+          done
       - name: 准备正式通道
         env:
           CHANNEL_BASE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}

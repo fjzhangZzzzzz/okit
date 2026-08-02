@@ -40,14 +40,31 @@ fi
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/okit-install.XXXXXX")
 metadata_tmp=
 binary_tmp=
-trap 'rm -rf "$tmp"; [ -z "$metadata_tmp" ] || rm -f "$metadata_tmp"; [ -z "$binary_tmp" ] || rm -f "$binary_tmp"' EXIT HUP INT TERM
+cleanup() {
+  rm -rf "$tmp"
+  [ -z "$metadata_tmp" ] || rm -f "$metadata_tmp"
+  [ -z "$binary_tmp" ] || rm -f "$binary_tmp"
+}
+on_exit() {
+  status=$?
+  cleanup
+  if [ "$status" -ne 0 ]; then
+    echo "okit 安装失败：安装过程未完成。" >&2
+    echo "请检查网络、Release 制品和安装目录权限后重试。" >&2
+  fi
+  exit "$status"
+}
+trap on_exit 0 1 2 15
 
 if [ -n "$requested_version" ]; then
   manifest_url="$release_root/download/$requested_version/release-manifest.json"
 else
   manifest_url="$release_root/latest/download/release-manifest.json"
 fi
-curl -fsSL "$manifest_url" -o "$tmp/release-manifest.json"
+if ! curl -fsSL "$manifest_url" -o "$tmp/release-manifest.json" 2>/dev/null; then
+  echo "okit 安装失败：无法下载发布清单。" >&2
+  exit 1
+fi
 
 json_string() {
   sed -n "s/^[[:space:]]*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\"[[:space:]]*,*[[:space:]]*$/\1/p" "$tmp/release-manifest.json" | head -n 1
@@ -76,8 +93,14 @@ case "$checksums_name" in [0-9A-Za-z]* ) ;; *) echo "invalid checksums filename:
 case "$checksums_name" in *[!0-9A-Za-z._-]* ) echo "invalid checksums filename: $checksums_name" >&2; exit 1 ;; esac
 base="$release_root/download/$version"
 
-curl -fsSL "$base/$asset" -o "$tmp/$asset"
-curl -fsSL "$base/$checksums_name" -o "$tmp/$checksums_name"
+if ! curl -fsSL "$base/$asset" -o "$tmp/$asset" 2>/dev/null; then
+  echo "okit 安装失败：无法下载 Windows/Linux 制品。" >&2
+  exit 1
+fi
+if ! curl -fsSL "$base/$checksums_name" -o "$tmp/$checksums_name" 2>/dev/null; then
+  echo "okit 安装失败：无法下载校验文件。" >&2
+  exit 1
+fi
 expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/$checksums_name")
 [ -n "$expected" ] || { echo "checksum for $asset is missing" >&2; exit 1; }
 if command -v sha256sum >/dev/null 2>&1; then

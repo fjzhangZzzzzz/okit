@@ -45,6 +45,13 @@ func TestInstallersVerifyReleaseAndWriteOfficialMetadata(t *testing.T) {
 	if strings.Contains(repositoryFile(t, "scripts", "install.sh"), "OKIT_VERSION") || strings.Contains(powerShell, "OKIT_VERSION") {
 		t.Error("installers must not require OKIT_VERSION to select a release")
 	}
+	if !strings.Contains(powerShell, "catch") || !strings.Contains(powerShell, "okit 安装失败") {
+		t.Error("install.ps1 must convert failures into a friendly user-facing error")
+	}
+	installShell := repositoryFile(t, "scripts", "install.sh")
+	if !strings.Contains(installShell, "安装失败") {
+		t.Error("install.sh must convert failures into a friendly user-facing error")
+	}
 	if !strings.Contains(powerShell, "UTF8Encoding]::new($false)") {
 		t.Error("PowerShell installer may write BOM-prefixed JSON that Go cannot decode")
 	}

@@ -15,6 +15,7 @@ function Assert-SafeFilename([string]$Name, [string]$Kind) {
     }
 }
 
+try {
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'okit requires a 64-bit Windows system' }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
 if ($requestedVersion -and $requestedVersion -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') { throw "Invalid -Version: $requestedVersion" }
@@ -113,4 +114,18 @@ finally {
     if ($updaterTemp) { Remove-Item -LiteralPath $updaterTemp -Force -ErrorAction SilentlyContinue }
     if ($metadataTemp) { Remove-Item -LiteralPath $metadataTemp -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+}
+}
+catch {
+    $status = $null
+    if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+        $status = [int]$_.Exception.Response.StatusCode
+    }
+    $detail = if ($status) { "HTTP $status" } else { $_.Exception.Message }
+    Write-Error "okit 安装失败：$detail"
+    Write-Error '请检查网络、Release 制品和安装目录权限后重试。'
+    if ($env:OKIT_INSTALL_VERBOSE -eq '1') {
+        Write-Error ("详细诊断：" + $_.Exception.ToString())
+    }
+    exit 1
 }
