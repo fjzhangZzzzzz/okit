@@ -3,11 +3,19 @@ version: 2
 project_name: okit
 
 builds:
-  - id: okit
+  - id: okit-linux
     main: ./cmd/okit
     binary: okit
     env: [CGO_ENABLED=0]
-    goos: [linux, windows]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Tag}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.buildMode=release
+  - id: okit-windows
+    main: ./cmd/okit
+    binary: okit
+    env: [CGO_ENABLED=0]
+    goos: [windows]
     goarch: [amd64, arm64]
     ldflags:
       - -s -w -X main.version={{.Tag}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.buildMode=release
@@ -20,8 +28,13 @@ builds:
     ldflags: ['-s -w']
 
 archives:
-  - id: release
-    ids: [okit, okit-updater]
+  - id: release-linux
+    ids: [okit-linux]
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [README.md, LICENSE]
+  - id: release-windows
+    ids: [okit-windows, okit-updater]
     formats: [tar.gz]
     format_overrides:
       - goos: windows
